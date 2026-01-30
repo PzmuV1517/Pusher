@@ -30,7 +30,7 @@ sudo mv pusher /usr/local/bin/
 ### Using Homebrew (coming soon)
 
 ```bash
-brew tap andreibanu/pusher
+brew tap PzmuV1517/pusher
 brew install pusher
 ```
 
