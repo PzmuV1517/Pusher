@@ -85,7 +85,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	fmt.Printf("[OK] Found Gradle wrapper: %s\n", gradlePath)
 
 	// Build and deploy
-	fmt.Println("\n[#] Building and deploying...\n")
+	fmt.Println("\n[#] Building and deploying...")
 	fmt.Println("─────────────────────────────────────────")
 
 	if err := gradle.Build(gradlePath, os.Stdout); err != nil {
@@ -101,7 +101,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 func firstRunSetup() error {
 	fmt.Println("Welcome to Pusher!")
-	fmt.Println("\nNo robot profiles found. Let's set one up.\n")
+	fmt.Println("\nNo robot profiles found. Let's set one up.")
 
 	reader := bufio.NewReader(os.Stdin)
 

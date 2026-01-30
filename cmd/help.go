@@ -12,7 +12,7 @@ const asciiArt = `
 | |_) | | | / __| '_ \ / _ \ '__|
 |  __/| |_| \__ \ | | |  __/ |   
 |_|    \__,_|___/_| |_|\___|_|   
-                                  
+
 FTC Robot Deployment Tool
 `
 
@@ -23,10 +23,10 @@ var helpCmd = &cobra.Command{
 }
 
 func runHelp(cmd *cobra.Command, args []string) {
-	fmt.Println(asciiArt)
+	fmt.Print(asciiArt)
 	fmt.Println("Made with love by:")
 	fmt.Println("  Credits: Andrei Banu")
-	fmt.Println()
+	fmt.Println("")
 	fmt.Println("Commands:")
 	fmt.Println("  pusher                Connect, build, and deploy")
 	fmt.Println("  pusher dc             Disconnect adb")
@@ -38,5 +38,5 @@ func runHelp(cmd *cobra.Command, args []string) {
 	fmt.Println("    pusher profile edit      Edit an existing profile")
 	fmt.Println("    pusher profile use       Set default profile")
 	fmt.Println("  pusher help           Show this help")
-	fmt.Println()
+
 }

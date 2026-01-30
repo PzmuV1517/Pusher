@@ -63,7 +63,8 @@ func runProfileList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Println("Robot Profiles:\n")
+	fmt.Println("Robot Profiles:")
+	fmt.Println()
 	for name, profile := range cfg.Profiles {
 		marker := " "
 		if name == cfg.DefaultProfile {

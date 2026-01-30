@@ -4,24 +4,40 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	
+	"github.com/spf13/viper"
 )
 
-func TestInitialize(t *testing.T) {
-	// Create a temporary directory for testing
+func setupTest(t *testing.T) (cleanup func()) {
+	// Create temp directory
 	tmpDir := t.TempDir()
 	
-	// Override home directory for testing
+	// Save and override HOME
 	originalHome := os.Getenv("HOME")
 	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
 	
+	// Reset viper
+	viper.Reset()
+	
+	// Initialize config
 	err := Initialize()
 	if err != nil {
 		t.Fatalf("Initialize() failed: %v", err)
 	}
 	
+	// Return cleanup function
+	return func() {
+		os.Setenv("HOME", originalHome)
+		viper.Reset()
+	}
+}
+
+func TestInitialize(t *testing.T) {
+	cleanup := setupTest(t)
+	defer cleanup()
+	
 	// Check if config directory was created
-	configPath := filepath.Join(tmpDir, ".config", "pusher")
+	configPath := filepath.Join(os.Getenv("HOME"), ".config", "pusher")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Errorf("Config directory was not created: %s", configPath)
 	}
@@ -34,19 +50,11 @@ func TestInitialize(t *testing.T) {
 }
 
 func TestAddProfile(t *testing.T) {
-	// Setup
-	tmpDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
-	
-	err := Initialize()
-	if err != nil {
-		t.Fatalf("Initialize() failed: %v", err)
-	}
+	cleanup := setupTest(t)
+	defer cleanup()
 	
 	// Test adding a profile
-	err = AddProfile("test-robot", "DIRECT-Robot", "password123")
+	err := AddProfile("test-robot", "DIRECT-Robot", "password123")
 	if err != nil {
 		t.Fatalf("AddProfile() failed: %v", err)
 	}
@@ -77,58 +85,42 @@ func TestAddProfile(t *testing.T) {
 }
 
 func TestGetDefaultProfile(t *testing.T) {
-	// Setup
-	tmpDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	cleanup := setupTest(t)
+	defer cleanup()
 	
-	err := Initialize()
-	if err != nil {
-		t.Fatalf("Initialize() failed: %v", err)
-	}
-	
-	// Test with no profiles
-	_, err = GetDefaultProfile()
+	// Test with no profiles - should get error
+	_, err := GetDefaultProfile()
 	if err == nil {
 		t.Error("Expected error when no default profile exists")
 	}
-	
-	// Add a profile
-	err = AddProfile("default", "DIRECT-Robot", "password")
+
+	// Add a profile - it should become default automatically
+	err = AddProfile("test-robot", "DIRECT-Robot", "password")
 	if err != nil {
 		t.Fatalf("AddProfile() failed: %v", err)
 	}
-	
-	// Get default profile
+
+	// Get default profile - should be the one we just added
 	profile, err := GetDefaultProfile()
 	if err != nil {
 		t.Fatalf("GetDefaultProfile() failed: %v", err)
 	}
-	
-	if profile.Name != "default" {
-		t.Errorf("Expected profile name 'default', got '%s'", profile.Name)
+
+	if profile.Name != "test-robot" {
+		t.Errorf("Expected profile name 'test-robot', got '%s'", profile.Name)
 	}
 }
 
 func TestSetDefaultProfile(t *testing.T) {
-	// Setup
-	tmpDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
-	
-	err := Initialize()
-	if err != nil {
-		t.Fatalf("Initialize() failed: %v", err)
-	}
+	cleanup := setupTest(t)
+	defer cleanup()
 	
 	// Add two profiles
 	AddProfile("robot1", "SSID1", "pass1")
 	AddProfile("robot2", "SSID2", "pass2")
 	
 	// Set robot2 as default
-	err = SetDefaultProfile("robot2")
+	err := SetDefaultProfile("robot2")
 	if err != nil {
 		t.Fatalf("SetDefaultProfile() failed: %v", err)
 	}
@@ -151,19 +143,11 @@ func TestSetDefaultProfile(t *testing.T) {
 }
 
 func TestSaveLastWiFi(t *testing.T) {
-	// Setup
-	tmpDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
-	
-	err := Initialize()
-	if err != nil {
-		t.Fatalf("Initialize() failed: %v", err)
-	}
+	cleanup := setupTest(t)
+	defer cleanup()
 	
 	// Save Wi-Fi
-	err = SaveLastWiFi("MyHomeNetwork")
+	err := SaveLastWiFi("MyHomeNetwork")
 	if err != nil {
 		t.Fatalf("SaveLastWiFi() failed: %v", err)
 	}
@@ -180,30 +164,25 @@ func TestSaveLastWiFi(t *testing.T) {
 }
 
 func TestHasProfiles(t *testing.T) {
-	// Setup
-	tmpDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
-	
-	err := Initialize()
-	if err != nil {
-		t.Fatalf("Initialize() failed: %v", err)
-	}
+	cleanup := setupTest(t)
+	defer cleanup()
 	
 	// Test with no profiles
 	hasProfiles, err := HasProfiles()
 	if err != nil {
 		t.Fatalf("HasProfiles() failed: %v", err)
 	}
-	
+
 	if hasProfiles {
 		t.Error("Expected false when no profiles exist")
 	}
-	
+
 	// Add a profile
-	AddProfile("test", "SSID", "pass")
-	
+	err = AddProfile("test", "SSID", "pass")
+	if err != nil {
+		t.Fatalf("AddProfile() failed: %v", err)
+	}
+
 	// Test with profiles
 	hasProfiles, err = HasProfiles()
 	if err != nil {
