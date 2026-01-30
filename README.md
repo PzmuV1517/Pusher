@@ -31,8 +31,14 @@ sudo mv pusher /usr/local/bin/
 
 ```bash
 brew tap PzmuV1517/PzmuV1517
-brew install pusher
+brew install PzmuV1517/PzmuV1517/pusher
 ```
+
+or just
+```bash
+brew install PzmuV1517/PzmuV1517/pusher
+```
+both have the same result
 
 ## Prerequisites
 

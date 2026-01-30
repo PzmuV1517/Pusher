@@ -149,7 +149,7 @@ jobs:
             ## Homebrew
             
             ```ruby
-            url "https://github.com/andreibanu/pusher/archive/${{ steps.version.outputs.TAG }}.tar.gz"
+            url "https://github.com/andreibanu/Pusher/archive/${{ steps.version.outputs.TAG }}.tar.gz"
             sha256 "${{ steps.sha.outputs.sha256 }}"
             version "${{ steps.version.outputs.VERSION }}"
             ```
