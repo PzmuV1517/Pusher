@@ -42,7 +42,7 @@ func Build(wrapper string, outputWriter io.Writer) error {
 	}
 
 	cmd := exec.Command(wrapper, "assembleDebug", "installDebug")
-	
+
 	// Get working directory from wrapper path
 	wrapperDir := filepath.Dir(wrapper)
 	cmd.Dir = wrapperDir
@@ -52,7 +52,7 @@ func Build(wrapper string, outputWriter io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
-	
+
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to get stderr pipe: %w", err)

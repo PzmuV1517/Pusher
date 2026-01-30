@@ -64,16 +64,16 @@ type stageMsg Stage
 
 // Model represents the TUI state
 type Model struct {
-	stage        Stage
-	spinner      spinner
-	err          error
-	output       []string
-	maxOutput    int
-	currentSSID  string
-	targetSSID   string
-	gradlePath   string
-	done         bool
-	statusMsg    string
+	stage       Stage
+	spinner     spinner
+	err         error
+	output      []string
+	maxOutput   int
+	currentSSID string
+	targetSSID  string
+	gradlePath  string
+	done        bool
+	statusMsg   string
 }
 
 // NewModel creates a new TUI model

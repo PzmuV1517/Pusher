@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	RobotIP = "192.168.43.1"
+	RobotIP   = "192.168.43.1"
 	RobotPort = "5555"
 )
 

@@ -35,9 +35,9 @@ func runExit(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\n[>] Restoring Wi-Fi connection to: %s\n", lastWiFi)
-	
+
 	wifiMgr := wifi.NewManager()
-	
+
 	// Try to connect back to the last Wi-Fi
 	// Note: We don't have the password, so this will only work if it's a known network
 	currentSSID, err := wifiMgr.GetCurrentSSID()

@@ -1,0 +1,223 @@
+name: Auto Release on Main
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  test-and-release:
+    name: Test and Auto Release
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Download dependencies
+        run: go mod download
+      
+      - name: Verify dependencies
+        run: go mod verify
+      
+      - name: Run tests
+        run: go test -v ./...
+      
+      - name: Run go vet
+        run: go vet ./...
+      
+      - name: Run gofmt
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Go code is not formatted:"
+            gofmt -d .
+            exit 1
+          fi
+      
+      - name: Generate version
+        id: version
+        run: |
+          # Get current date and time for unique versioning
+          VERSION="1.0.$(date +%Y%m%d%H%M%S)"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Generated version: v$VERSION"
+      
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.version.outputs.TAG }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create tarball for Homebrew
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          mkdir -p dist
+          VERSION=${{ steps.version.outputs.VERSION }}
+          TARBALL="pusher-${VERSION}.tar.gz"
+          
+          # Create tarball of source code (excluding .git)
+          tar --exclude='.git' --exclude='dist' --exclude='pusher' \
+              -czf "dist/${TARBALL}" .
+          
+          echo "Created tarball: dist/${TARBALL}"
+          ls -lh "dist/${TARBALL}"
+      
+      - name: Calculate SHA256 of tarball
+        if: steps.check_tag.outputs.exists == 'false'
+        id: sha
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          TARBALL="pusher-${VERSION}.tar.gz"
+          SHA256=$(shasum -a 256 "dist/${TARBALL}" | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "tarball=$TARBALL" >> $GITHUB_OUTPUT
+          echo "SHA256: $SHA256"
+      
+      - name: Build binaries
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          mkdir -p dist/binaries
+          
+          # macOS Intel
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
+            -o dist/binaries/pusher-darwin-amd64
+          
+          # macOS Apple Silicon
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
+            -o dist/binaries/pusher-darwin-arm64
+          
+          # Linux
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
+            -o dist/binaries/pusher-linux-amd64
+          
+          # Windows
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
+            -o dist/binaries/pusher-windows-amd64.exe
+          
+          # Universal macOS binary
+          lipo -create -output dist/binaries/pusher-darwin-universal \
+            dist/binaries/pusher-darwin-amd64 \
+            dist/binaries/pusher-darwin-arm64
+      
+      - name: Calculate binary checksums
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          cd dist/binaries
+          shasum -a 256 pusher-* > SHA256SUMS
+          cat SHA256SUMS
+      
+      - name: Create Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: Release ${{ steps.version.outputs.TAG }}
+          draft: false
+          prerelease: false
+          files: |
+            dist/${{ steps.sha.outputs.tarball }}
+            dist/binaries/pusher-darwin-amd64
+            dist/binaries/pusher-darwin-arm64
+            dist/binaries/pusher-darwin-universal
+            dist/binaries/pusher-linux-amd64
+            dist/binaries/pusher-windows-amd64.exe
+            dist/binaries/SHA256SUMS
+          body: |
+            ## Pusher v${{ steps.version.outputs.VERSION }}
+            
+            FTC Robot Deployment Tool - Automated release from main branch.
+            
+            [!] All tests passed successfully
+            
+            ---
+            
+            ## Homebrew Installation
+            
+            Update your Homebrew tap formula at https://github.com/PzmuV1517/homebrew-PzmuV1517 with:
+            
+            ```ruby
+            url "https://github.com/andreibanu/pusher/archive/${{ steps.version.outputs.TAG }}.tar.gz"
+            sha256 "${{ steps.sha.outputs.sha256 }}"
+            version "${{ steps.version.outputs.VERSION }}"
+            ```
+            
+            ### Tarball SHA256
+            ```
+            ${{ steps.sha.outputs.sha256 }}
+            ```
+            
+            ---
+            
+            ## Manual Installation
+            
+            ### macOS (Homebrew)
+            ```bash
+            brew tap PzmuV1517/PzmuV1517
+            brew install pusher
+            ```
+            
+            ### Manual Binary Installation
+            
+            Download the appropriate binary for your system:
+            
+            - **macOS (Universal)**: `pusher-darwin-universal` - Works on both Intel and Apple Silicon
+            - **macOS (Intel)**: `pusher-darwin-amd64`
+            - **macOS (Apple Silicon)**: `pusher-darwin-arm64`
+            - **Linux**: `pusher-linux-amd64`
+            - **Windows**: `pusher-windows-amd64.exe`
+            
+            #### macOS/Linux
+            ```bash
+            # Download and make executable
+            curl -LO https://github.com/andreibanu/pusher/releases/download/${{ steps.version.outputs.TAG }}/pusher-darwin-universal
+            chmod +x pusher-darwin-universal
+            sudo mv pusher-darwin-universal /usr/local/bin/pusher
+            
+            # Verify installation
+            pusher help
+            ```
+            
+            #### Windows
+            Download `pusher-windows-amd64.exe`, rename to `pusher.exe`, and add to your PATH.
+            
+            ---
+            
+            ## What's New
+            
+            This is an automated release triggered by a push to the main branch.
+            - [>] All tests passing
+            - [>] Binary checksums verified
+            - [>] Ready for Homebrew formula update
+            
+            ### Quick Start
+            ```bash
+            pusher                # Full deployment (Wi-Fi + ADB + Gradle)
+            pusher dc             # Disconnect ADB only
+            pusher exit           # Disconnect and restore Wi-Fi
+            pusher profile        # Manage robot profiles
+            pusher help           # Show help
+            ```
+            
+            See [README.md](https://github.com/andreibanu/pusher#readme) for full documentation.
+            
+            ---
+            
+            **Commit**: ${{ github.sha }}
+            **Branch**: main
+            **Triggered by**: @${{ github.actor }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
