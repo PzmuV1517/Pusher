@@ -88,18 +88,6 @@ jobs:
           echo "tarball=$TARBALL" >> $GITHUB_OUTPUT
           echo "SHA256: $SHA256"
       
-      - name: Calculate GitHub archive SHA256
-        if: steps.check_tag.outputs.exists == 'false'
-        id: github_sha
-        run: |
-          TAG=${{ steps.version.outputs.TAG }}
-          # GitHub creates the archive after we create the tag, so we need to wait
-          echo "Waiting for GitHub to generate archive..."
-          sleep 10
-          GITHUB_SHA256=$(curl -sL "https://github.com/PzmuV1517/Pusher/archive/${TAG}.tar.gz" | shasum -a 256 | cut -d' ' -f1)
-          echo "github_sha256=$GITHUB_SHA256" >> $GITHUB_OUTPUT
-          echo "GitHub Archive SHA256: $GITHUB_SHA256"
-      
       - name: Build binaries
         if: steps.check_tag.outputs.exists == 'false'
         run: |
@@ -160,18 +148,9 @@ jobs:
             
             ## Homebrew Installation
             
-            Update your Homebrew tap formula at https://github.com/PzmuV1517/homebrew-PzmuV1517 with:
+            **SHA256 will be calculated and added to this release in a moment...**
             
-            ```ruby
-            url "https://github.com/PzmuV1517/Pusher/archive/${{ steps.version.outputs.TAG }}.tar.gz"
-            sha256 "${{ steps.github_sha.outputs.github_sha256 }}"
-            version "${{ steps.version.outputs.VERSION }}"
-            ```
-            
-            ### GitHub Archive SHA256 (for Homebrew)
-            ```
-            ${{ steps.github_sha.outputs.github_sha256 }}
-            ```
+            Check back in ~30 seconds for the Homebrew formula details.
             
             ---
             
@@ -234,6 +213,105 @@ jobs:
             **Triggered by**: @${{ github.actor }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Calculate GitHub archive SHA256
+        if: steps.check_tag.outputs.exists == 'false'
+        id: github_sha
+        run: |
+          TAG=${{ steps.version.outputs.TAG }}
+          echo "Waiting for GitHub to generate archive..."
+          sleep 15
+          GITHUB_SHA256=$(curl -sL "https://github.com/PzmuV1517/Pusher/archive/${TAG}.tar.gz" | shasum -a 256 | cut -d' ' -f1)
+          echo "github_sha256=$GITHUB_SHA256" >> $GITHUB_OUTPUT
+          echo "GitHub Archive SHA256: $GITHUB_SHA256"
+          
+          # Update release body with correct SHA256
+          gh release edit "${TAG}" --notes-file - <<EOF
+          ## Pusher ${{ steps.version.outputs.VERSION }}
+          
+          FTC Robot Deployment Tool - Automated release from main branch.
+          
+          [!] All tests passed successfully
+          
+          ---
+          
+          ## Homebrew Installation
+          
+          Update your Homebrew tap formula at https://github.com/PzmuV1517/homebrew-PzmuV1517 with:
+          
+          \`\`\`ruby
+          url "https://github.com/PzmuV1517/Pusher/archive/${TAG}.tar.gz"
+          sha256 "${GITHUB_SHA256}"
+          version "${{ steps.version.outputs.VERSION }}"
+          \`\`\`
+          
+          ### GitHub Archive SHA256 (for Homebrew)
+          \`\`\`
+          ${GITHUB_SHA256}
+          \`\`\`
+          
+          ---
+          
+          ## Manual Installation
+          
+          ### macOS (Homebrew)
+          \`\`\`bash
+          brew tap PzmuV1517/PzmuV1517
+          brew install pusher
+          \`\`\`
+          
+          ### Manual Binary Installation
+          
+          Download the appropriate binary for your system:
+          
+          - **macOS (Universal)**: \`pusher-darwin-universal\` - Works on both Intel and Apple Silicon
+          - **macOS (Intel)**: \`pusher-darwin-amd64\`
+          - **macOS (Apple Silicon)**: \`pusher-darwin-arm64\`
+          - **Linux**: \`pusher-linux-amd64\`
+          - **Windows**: \`pusher-windows-amd64.exe\`
+          
+          #### macOS/Linux
+          \`\`\`bash
+          # Download and make executable
+          curl -LO https://github.com/PzmuV1517/Pusher/releases/download/${TAG}/pusher-darwin-universal
+          chmod +x pusher-darwin-universal
+          sudo mv pusher-darwin-universal /usr/local/bin/pusher
+          
+          # Verify installation
+          pusher help
+          \`\`\`
+          
+          #### Windows
+          Download \`pusher-windows-amd64.exe\`, rename to \`pusher.exe\`, and add to your PATH.
+          
+          ---
+          
+          ## What's New
+          
+          This is an automated release triggered by a push to the main branch.
+          - [>] All tests passing
+          - [>] Binary checksums verified
+          - [>] Ready for Homebrew formula update
+          
+          ### Quick Start
+          \`\`\`bash
+          pusher                # Full deployment (Wi-Fi + ADB + Gradle)
+          pusher dc             # Disconnect ADB only
+          pusher exit           # Disconnect and restore Wi-Fi
+          pusher profile        # Manage robot profiles
+          pusher help           # Show help
+          \`\`\`
+          
+          See [README.md](https://github.com/PzmuV1517/Pusher#readme) for full documentation.
+          
+          ---
+          
+          **Commit**: ${{ github.sha }}
+          **Branch**: main
+          **Triggered by**: @${{ github.actor }}
+          EOF
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Notify Homebrew Tap
         if: steps.check_tag.outputs.exists == 'false'
