@@ -47,8 +47,9 @@ jobs:
       - name: Generate version
         id: version
         run: |
-          # Get current date and time for unique versioning
-          VERSION="1.0.$(date +%Y%m%d%H%M%S)"
+          # Get commit count for build number
+          BUILD_NUM=$(git rev-list --count HEAD)
+          VERSION="1.0.${BUILD_NUM}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
           echo "Generated version: v$VERSION"
@@ -145,9 +146,7 @@ jobs:
             
             ---
             
-            ## Homebrew Installation
-            
-            Update your Homebrew tap formula at https://github.com/PzmuV1517/homebrew-PzmuV1517 with:
+            ## Homebrew
             
             ```ruby
             url "https://github.com/andreibanu/pusher/archive/${{ steps.version.outputs.TAG }}.tar.gz"
