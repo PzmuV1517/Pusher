@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          
+          # macOS Intel
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/pusher-darwin-amd64
+          
+          # macOS Apple Silicon
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/pusher-darwin-arm64
+          
+          # Linux
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/pusher-linux-amd64
+          
+          # Windows
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/pusher-windows-amd64.exe
+          
+          # Universal macOS binary
+          lipo -create -output dist/pusher-darwin-universal \
+            dist/pusher-darwin-amd64 \
+            dist/pusher-darwin-arm64
+      
+      - name: Calculate SHA256
+        id: sha
+        run: |
+          echo "amd64=$(shasum -a 256 dist/pusher-darwin-amd64 | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "arm64=$(shasum -a 256 dist/pusher-darwin-arm64 | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "linux=$(shasum -a 256 dist/pusher-linux-amd64 | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "windows=$(shasum -a 256 dist/pusher-windows-amd64.exe | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+      
+      - name: Create checksums file
+        run: |
+          cd dist
+          shasum -a 256 pusher-* > SHA256SUMS
+          cat SHA256SUMS
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/pusher-darwin-amd64
+            dist/pusher-darwin-arm64
+            dist/pusher-darwin-universal
+            dist/pusher-linux-amd64
+            dist/pusher-windows-amd64.exe
+            dist/SHA256SUMS
+          body: |
+            ## Installation
+            
+            ### macOS (Homebrew)
+            ```bash
+            brew tap andreibanu/pusher
+            brew install pusher
+            ```
+            
+            ### Manual Installation
+            
+            Download the appropriate binary for your system:
+            
+            - **macOS (Universal)**: `pusher-darwin-universal`
+            - **macOS (Intel)**: `pusher-darwin-amd64`
+            - **macOS (Apple Silicon)**: `pusher-darwin-arm64`
+            - **Linux**: `pusher-linux-amd64`
+            - **Windows**: `pusher-windows-amd64.exe`
+            
+            Make it executable and move to your PATH:
+            ```bash
+            chmod +x pusher-darwin-*
+            sudo mv pusher-darwin-* /usr/local/bin/pusher
+            ```
+            
+            ### SHA256 Checksums
+            
+            macOS (Intel): `${{ steps.sha.outputs.amd64 }}`
+            macOS (Apple Silicon): `${{ steps.sha.outputs.arm64 }}`
+            Linux: `${{ steps.sha.outputs.linux }}`
+            Windows: `${{ steps.sha.outputs.windows }}`
+            
+            ## What's New
+            
+            See [README.md](https://github.com/andreibanu/pusher#readme) for full documentation.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
