@@ -1,0 +1,17 @@
+name: Notify Homebrew Tap on Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-tap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger tap update
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.TAP_UPDATE_TOKEN }}" \
+            https://api.github.com/repos/andreibanu/homebrew-PzmuV1517/dispatches \
+            -d '{"event_type":"pusher-release","client_payload":{"tag":"${{ github.event.release.tag_name }}"}}'
