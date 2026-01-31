@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/andreibanu/pusher/internal/config"
 )
 
 // DetectWrapper finds the Gradle wrapper in the current directory
@@ -30,7 +32,8 @@ func DetectWrapper() (string, error) {
 	return "", fmt.Errorf("gradlew not found in current directory or parent directories")
 }
 
-// Build runs the Gradle build and install tasks
+// Build runs the Gradle build task (assembleDebug only, no install).
+// Use Install() separately for faster APK installation via adb.
 func Build(wrapper string, outputWriter io.Writer) error {
 	if _, err := os.Stat(wrapper); err != nil {
 		return fmt.Errorf("gradle wrapper not found: %s", wrapper)
@@ -44,7 +47,16 @@ func Build(wrapper string, outputWriter io.Writer) error {
 	// Use Gradle in offline mode so it relies on dependencies
 	// already downloaded by Android Studio, avoiding network
 	// access while connected to the robot's Wi-Fi.
-	cmd := exec.Command(wrapper, "assembleDebug", "installDebug", "--offline")
+	// Also enable parallel execution, build caching, and configurable threads.
+	// Only run assembleDebug; install is handled separately via adb for speed.
+	threads := config.GetThreads()
+	cmd := exec.Command(wrapper,
+		"assembleDebug",
+		"--offline",
+		"--parallel",
+		"--build-cache",
+		fmt.Sprintf("-Dorg.gradle.workers.max=%d", threads),
+	)
 
 	// Get working directory from wrapper path
 	wrapperDir := filepath.Dir(wrapper)
@@ -108,7 +120,14 @@ func BuildOnline(wrapper string, outputWriter io.Writer) error {
 		return fmt.Errorf("failed to make gradlew executable: %w", err)
 	}
 
-	cmd := exec.Command(wrapper, "assembleDebug", "installDebug")
+	// Enable parallel execution, build caching, and configurable threads.
+	threads := config.GetThreads()
+	cmd := exec.Command(wrapper,
+		"assembleDebug", "installDebug",
+		"--parallel",
+		"--build-cache",
+		fmt.Sprintf("-Dorg.gradle.workers.max=%d", threads),
+	)
 
 	wrapperDir := filepath.Dir(wrapper)
 	cmd.Dir = wrapperDir
@@ -158,4 +177,25 @@ func streamOutput(reader io.Reader, writer io.Writer, done chan bool) {
 		fmt.Fprintln(writer, scanner.Text())
 	}
 	done <- true
+}
+
+// FindApk locates the debug APK in the TeamCode module's build output.
+// It searches for TeamCode/build/outputs/apk/debug/*.apk
+func FindApk(wrapperDir string) (string, error) {
+	// Common locations for TeamCode APK
+	patterns := []string{
+		filepath.Join(wrapperDir, "TeamCode", "build", "outputs", "apk", "debug", "*.apk"),
+		filepath.Join(wrapperDir, "TeamCode", "build", "outputs", "apk", "debug", "TeamCode-debug.apk"),
+		filepath.Join(wrapperDir, "FtcRobotController", "build", "outputs", "apk", "debug", "*.apk"),
+	}
+
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(pattern)
+		if err == nil && len(matches) > 0 {
+			// Return the first APK found
+			return matches[0], nil
+		}
+	}
+
+	return "", fmt.Errorf("debug APK not found in build outputs")
 }

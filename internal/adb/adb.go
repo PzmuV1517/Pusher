@@ -89,3 +89,85 @@ func IsConnected() bool {
 	addr := fmt.Sprintf("%s:%s", RobotIP, RobotPort)
 	return strings.Contains(string(output), addr)
 }
+
+// Install installs an APK to the connected device using optimized flags.
+// Uses -r (reinstall), -d (allow downgrade), and -g (grant permissions).
+// If install fails, it will disconnect, reconnect, and retry once.
+func Install(apkPath string) error {
+	if !IsInstalled() {
+		return fmt.Errorf("adb not found")
+	}
+
+	// First attempt
+	err := tryInstall(apkPath)
+	if err == nil {
+		return nil
+	}
+
+	// Check if it's a recoverable error (device offline or generic failure)
+	errLower := strings.ToLower(err.Error())
+	if strings.Contains(errLower, "device offline") ||
+		strings.Contains(errLower, "failed to install") ||
+		strings.Contains(errLower, "error:") {
+
+		fmt.Printf("\n[!] Install failed: %v\n", err)
+		fmt.Println("[*] Attempting recovery: disconnect and reconnect...")
+
+		// Disconnect
+		fmt.Println("[*] Running adb disconnect...")
+		if disconnectErr := Disconnect(); disconnectErr != nil {
+			fmt.Printf("[!] Warning: disconnect failed: %v\n", disconnectErr)
+		}
+
+		// Small pause
+		time.Sleep(2 * time.Second)
+
+		// Reconnect
+		fmt.Println("[*] Running adb connect...")
+		if connectErr := Connect(); connectErr != nil {
+			return fmt.Errorf("reconnect failed: %w", connectErr)
+		}
+
+		// Wait for device to be ready
+		time.Sleep(1 * time.Second)
+
+		// Retry install
+		fmt.Println("[*] Retrying install...")
+		if retryErr := tryInstall(apkPath); retryErr != nil {
+			return fmt.Errorf("install failed after reconnect: %w", retryErr)
+		}
+
+		fmt.Println("[OK] Install succeeded after reconnect")
+		return nil
+	}
+
+	return err
+}
+
+// tryInstall attempts a single APK install
+func tryInstall(apkPath string) error {
+	// Use optimized install flags:
+	// -r: reinstall existing app, keeping data
+	// -d: allow version downgrade
+	// -g: grant all runtime permissions
+	cmd := exec.Command("adb", "install", "-r", "-d", "-g", apkPath)
+	output, err := cmd.CombinedOutput()
+	outputStr := strings.TrimSpace(string(output))
+
+	if err != nil {
+		return fmt.Errorf("adb install failed: %w (output: %s)", err, outputStr)
+	}
+
+	if strings.Contains(strings.ToLower(outputStr), "success") {
+		return nil
+	}
+
+	// Check for failure indicators
+	if strings.Contains(strings.ToLower(outputStr), "failure") ||
+		strings.Contains(strings.ToLower(outputStr), "failed") ||
+		strings.Contains(strings.ToLower(outputStr), "error") {
+		return fmt.Errorf("adb install failed: %s", outputStr)
+	}
+
+	return nil
+}

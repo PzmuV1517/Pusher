@@ -21,6 +21,7 @@ type Config struct {
 	DefaultProfile string              `mapstructure:"default_profile"`
 	Profiles       map[string]*Profile `mapstructure:"profiles"`
 	LastWiFi       string              `mapstructure:"last_wifi"`
+	Threads        int                 `mapstructure:"threads"`
 }
 
 var (
@@ -61,6 +62,7 @@ func Initialize() error {
 	viper.SetDefault("default_profile", "")
 	viper.SetDefault("profiles", map[string]*Profile{})
 	viper.SetDefault("last_wifi", "")
+	viper.SetDefault("threads", 8)
 
 	// Check if config file exists
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
@@ -92,6 +94,7 @@ func Save(cfg *Config) error {
 	viper.Set("default_profile", cfg.DefaultProfile)
 	viper.Set("profiles", cfg.Profiles)
 	viper.Set("last_wifi", cfg.LastWiFi)
+	viper.Set("threads", cfg.Threads)
 
 	if err := viper.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
@@ -191,4 +194,28 @@ func HasProfiles() (bool, error) {
 		return false, err
 	}
 	return len(cfg.Profiles) > 0, nil
+}
+
+// GetThreads returns the configured thread count (default 8)
+func GetThreads() int {
+	threads := viper.GetInt("threads")
+	if threads <= 0 {
+		return 8
+	}
+	return threads
+}
+
+// SetThreads sets the thread count for Gradle builds
+func SetThreads(count int) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	cfg.Threads = count
+	return Save(cfg)
+}
+
+// ResetThreads resets threads to the default value (8)
+func ResetThreads() error {
+	return SetThreads(8)
 }

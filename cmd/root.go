@@ -53,5 +53,6 @@ func init() {
 	rootCmd.AddCommand(exitCmd)
 	rootCmd.AddCommand(prepareCmd)
 	rootCmd.AddCommand(profileCmd)
+	rootCmd.AddCommand(threadsCmd)
 	rootCmd.AddCommand(helpCmd)
 }

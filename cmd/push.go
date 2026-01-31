@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
@@ -63,8 +64,8 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("[OK] Found Gradle wrapper: %s\n", gradlePath)
 
-	// Build and deploy
-	fmt.Println("\n[#] Building and deploying...")
+	// Build (assembleDebug only - faster than including installDebug)
+	fmt.Println("\n[#] Building...")
 	fmt.Println("─────────────────────────────────────────")
 
 	if err := gradle.Build(gradlePath, os.Stdout); err != nil {
@@ -72,7 +73,27 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("─────────────────────────────────────────")
-	fmt.Println("\n[OK] Deployment complete!")
+
+	// Find the built APK
+	wrapperDir := gradlePath[:len(gradlePath)-len("/gradlew")]
+	if wrapperDir == "." {
+		wrapperDir, _ = os.Getwd()
+	}
+	apkPath, err := gradle.FindApk(wrapperDir)
+	if err != nil {
+		return fmt.Errorf("failed to find APK: %w", err)
+	}
+	fmt.Printf("\n[*] Found APK: %s\n", apkPath)
+
+	// Install via ADB (faster than Gradle's installDebug)
+	fmt.Println("[*] Installing APK via ADB...")
+	installStart := time.Now()
+	if err := adb.Install(apkPath); err != nil {
+		return fmt.Errorf("install failed: %w", err)
+	}
+	installDuration := time.Since(installStart)
+
+	fmt.Printf("\n[OK] Deployment complete! (install took %.1fs)\n", installDuration.Seconds())
 	fmt.Println("\nYour app has been successfully built and deployed to the robot.")
 
 	return nil
