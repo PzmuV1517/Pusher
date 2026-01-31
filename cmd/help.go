@@ -43,6 +43,7 @@ func runHelp(cmd *cobra.Command, args []string) {
 	fmt.Println("  pusher dc             Disconnect adb")
 	fmt.Println("  pusher disconnect     Alias for dc")
 	fmt.Println("  pusher exit           Disconnect adb and restore Wi-Fi")
+	fmt.Println("  pusher prepare        Get dependencies for offline use (aka when using pusher)")
 	fmt.Println("  pusher profile        Manage robot profiles")
 	fmt.Println("    pusher profile list      List all profiles")
 	fmt.Println("    pusher profile add       Add a new profile")
