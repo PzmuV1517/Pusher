@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
@@ -24,87 +23,26 @@ var pushCmd = &cobra.Command{
 }
 
 func runPush(cmd *cobra.Command, args []string) error {
-	// Check for first-run setup
-	hasProfiles, err := config.HasProfiles()
-	if err != nil {
-		return fmt.Errorf("failed to check profiles: %w", err)
-	}
-
-	if !hasProfiles {
-		if err := firstRunSetup(); err != nil {
-			return err
-		}
-	}
-
-	// Get default profile
-	profile, err := config.GetDefaultProfile()
-	if err != nil {
-		return fmt.Errorf("failed to get default profile: %w", err)
-	}
-
-	// Initialize Wi-Fi manager
+	// Require that we're already on the robot Wi-Fi (192.168.43.x).
+	// We no longer try to switch networks automatically.
 	wifiMgr := wifi.NewManager()
-
-	// Save current Wi-Fi
-	fmt.Println("[*] Detecting current Wi-Fi...")
-	currentSSID, err := wifiMgr.GetCurrentSSID()
-	if err != nil {
-		return fmt.Errorf("failed to get current Wi-Fi: %w", err)
-	}
-
-	if currentSSID != "" {
-		fmt.Printf("[~] Saving current Wi-Fi: %s\n", currentSSID)
-		if err := config.SaveLastWiFi(currentSSID); err != nil {
-			fmt.Printf("[!] Warning: failed to save Wi-Fi state: %v\n", err)
-		}
-	}
-
-	// New flow:
-	// 1) Check current en0 IP. If already 192.168.43.x, skip Wi-Fi connect.
-	// 2) Otherwise connect, wait, and re-check. If still not in subnet, exit.
-
 	ip, err := wifiMgr.GetIPv4()
 	if err != nil {
 		return fmt.Errorf("failed to read Wi-Fi IP address: %w", err)
 	}
-	if ip != "" {
-		fmt.Printf("[*] Current Wi-Fi IPv4 on en0: %s\n", ip)
+	if ip == "" {
+		return fmt.Errorf("robot Wi-Fi not detected (no IPv4 on en0). Please connect to the robot's Wi-Fi (192.168.43.x) and rerun 'pusher'")
 	}
 
 	onRobotNet, err := wifiMgr.IsOnRobotNetwork()
 	if err != nil {
 		return fmt.Errorf("failed to verify robot network: %w", err)
 	}
-
 	if !onRobotNet {
-		// Not yet on robot subnet – perform a connect, then re-check.
-		fmt.Printf("\n[>] Connecting to robot Wi-Fi: %s\n", profile.SSID)
-		fmt.Println("[!] Note: If connection fails, you may need to run with 'sudo pusher'")
-		if err := wifiMgr.ConnectWithRetry(profile.SSID, profile.Password, 3); err != nil {
-			return fmt.Errorf("failed to connect to robot Wi-Fi: %w\n\n[!] Tip: Try running 'sudo pusher' if you're getting permission errors", err)
-		}
-
-		fmt.Println("[*] Waiting 10 seconds for network to stabilize...")
-		time.Sleep(10 * time.Second)
-
-		ip, err = wifiMgr.GetIPv4()
-		if err != nil {
-			return fmt.Errorf("failed to read Wi-Fi IP address after connect: %w", err)
-		}
-		fmt.Printf("[*] Wi-Fi IPv4 on en0 after connect: %s\n", ip)
-
-		onRobotNet, err = wifiMgr.IsOnRobotNetwork()
-		if err != nil {
-			return fmt.Errorf("failed to verify robot network after connect: %w", err)
-		}
-		if !onRobotNet {
-			return fmt.Errorf("Wi-Fi IP %s is not in robot subnet 192.168.43.x after connect - exiting", ip)
-		}
-	} else {
-		fmt.Println("[>] Already on robot subnet (192.168.43.x), skipping Wi-Fi connect")
+		return fmt.Errorf("robot Wi-Fi not detected: IPv4 on en0 is %s (expected 192.168.43.x). Please connect to the robot's Wi-Fi and rerun 'pusher'", ip)
 	}
 
-	fmt.Println("[OK] Ready on robot Wi-Fi (192.168.43.x)")
+	fmt.Println("[OK] Robot Wi-Fi detected (192.168.43.x)")
 
 	// Connect via ADB
 	fmt.Println("\n[+] Connecting to robot via ADB...")
