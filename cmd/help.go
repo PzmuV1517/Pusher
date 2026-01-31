@@ -38,6 +38,7 @@ func runHelp(cmd *cobra.Command, args []string) {
 	fmt.Println("")
 	fmt.Println("Commands:")
 	fmt.Println("  pusher                Connect, build, and deploy")
+	fmt.Println("  pusher connect        Connect to robot Wi-Fi only")
 	fmt.Println("  pusher --version      Show version information")
 	fmt.Println("  pusher dc             Disconnect adb")
 	fmt.Println("  pusher disconnect     Alias for dc")

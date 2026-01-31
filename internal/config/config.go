@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 
 	"github.com/spf13/viper"
@@ -32,6 +33,17 @@ func Initialize() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	// If running as root via sudo, prefer the invoking user's home directory
+	// so that configuration (including last_wifi) is shared between
+	// "pusher" and "sudo pusher".
+	if os.Geteuid() == 0 {
+		if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+			if u, err := user.Lookup(sudoUser); err == nil && u != nil && u.HomeDir != "" {
+				home = u.HomeDir
+			}
+		}
 	}
 
 	configDir = filepath.Join(home, ".config", "pusher")

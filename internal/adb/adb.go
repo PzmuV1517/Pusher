@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 const (
@@ -24,18 +25,38 @@ func Connect() error {
 	}
 
 	addr := fmt.Sprintf("%s:%s", RobotIP, RobotPort)
-	cmd := exec.Command("adb", "connect", addr)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("adb connect failed: %w (output: %s)", err, string(output))
+	fmt.Printf("[*] Attempting ADB connection to %s...\n", addr)
+	
+	maxRetries := 5
+	var lastErr error
+	
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			fmt.Printf("[*] ADB retry %d/%d...\n", i+1, maxRetries)
+			time.Sleep(3 * time.Second)
+		}
+		
+		cmd := exec.Command("adb", "connect", addr)
+		output, err := cmd.CombinedOutput()
+		outputStr := strings.TrimSpace(string(output))
+		
+		fmt.Printf("[*] ADB response: %s\n", outputStr)
+		
+		if err != nil {
+			lastErr = fmt.Errorf("adb command failed: %w", err)
+			continue
+		}
+
+		lowerOutput := strings.ToLower(outputStr)
+		if strings.Contains(lowerOutput, "connected") || strings.Contains(lowerOutput, "already connected") {
+			fmt.Println("[OK] ADB connection established")
+			return nil
+		}
+		
+		lastErr = fmt.Errorf("unexpected response: %s", outputStr)
 	}
 
-	outputStr := strings.ToLower(string(output))
-	if !strings.Contains(outputStr, "connected") && !strings.Contains(outputStr, "already connected") {
-		return fmt.Errorf("adb connect failed: %s", string(output))
-	}
-
-	return nil
+	return fmt.Errorf("ADB connection failed after %d attempts: %w\n\n[!] Troubleshooting:\n  1. Ensure you're connected to the robot's Wi-Fi\n  2. Enable ADB debugging on Robot Controller\n  3. Try 'adb connect %s' manually\n  4. Check robot app is running", maxRetries, lastErr, addr)
 }
 
 // Disconnect disconnects from the robot
