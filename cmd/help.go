@@ -22,6 +22,7 @@ From Team #14270
 ██╔══██╗██║   ██║██╔══██╗██║   ██║   ██║   ██║██║     ╚════██║
 ██║  ██║╚██████╔╝██████╔╝╚██████╔╝   ██║   ██║╚██████╗███████║
 ╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   ╚═╝ ╚═════╝╚══════╝ 
+
 `
 
 var helpCmd = &cobra.Command{
@@ -33,10 +34,11 @@ var helpCmd = &cobra.Command{
 func runHelp(cmd *cobra.Command, args []string) {
 	fmt.Print(asciiArt)
 	fmt.Println("Made with love by:")
-	fmt.Println("Andrei \"PzmuV1517\" Banu")
+	fmt.Println("	Andrei \"PzmuV1517\" Banu")
 	fmt.Println("")
 	fmt.Println("Commands:")
 	fmt.Println("  pusher                Connect, build, and deploy")
+	fmt.Println("  pusher connect        Connect to robot Wi-Fi only")
 	fmt.Println("  pusher --version      Show version information")
 	fmt.Println("  pusher dc             Disconnect adb")
 	fmt.Println("  pusher disconnect     Alias for dc")

@@ -47,6 +47,7 @@ func init() {
 
 	// Add subcommands
 	rootCmd.AddCommand(pushCmd)
+	rootCmd.AddCommand(connectCmd)
 	rootCmd.AddCommand(disconnectCmd)
 	rootCmd.AddCommand(exitCmd)
 	rootCmd.AddCommand(profileCmd)

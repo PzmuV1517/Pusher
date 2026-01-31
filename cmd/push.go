@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
@@ -58,12 +59,52 @@ func runPush(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Connect to robot Wi-Fi
-	fmt.Printf("\n[>] Connecting to robot Wi-Fi: %s\n", profile.SSID)
-	if err := wifiMgr.ConnectWithRetry(profile.SSID, profile.Password, 3); err != nil {
-		return fmt.Errorf("failed to connect to robot Wi-Fi: %w", err)
+	// New flow:
+	// 1) Check current en0 IP. If already 192.168.43.x, skip Wi-Fi connect.
+	// 2) Otherwise connect, wait, and re-check. If still not in subnet, exit.
+
+	ip, err := wifiMgr.GetIPv4()
+	if err != nil {
+		return fmt.Errorf("failed to read Wi-Fi IP address: %w", err)
 	}
-	fmt.Println("[OK] Connected to robot Wi-Fi")
+	if ip != "" {
+		fmt.Printf("[*] Current Wi-Fi IPv4 on en0: %s\n", ip)
+	}
+
+	onRobotNet, err := wifiMgr.IsOnRobotNetwork()
+	if err != nil {
+		return fmt.Errorf("failed to verify robot network: %w", err)
+	}
+
+	if !onRobotNet {
+		// Not yet on robot subnet – perform a connect, then re-check.
+		fmt.Printf("\n[>] Connecting to robot Wi-Fi: %s\n", profile.SSID)
+		fmt.Println("[!] Note: If connection fails, you may need to run with 'sudo pusher'")
+		if err := wifiMgr.ConnectWithRetry(profile.SSID, profile.Password, 3); err != nil {
+			return fmt.Errorf("failed to connect to robot Wi-Fi: %w\n\n[!] Tip: Try running 'sudo pusher' if you're getting permission errors", err)
+		}
+
+		fmt.Println("[*] Waiting 10 seconds for network to stabilize...")
+		time.Sleep(10 * time.Second)
+
+		ip, err = wifiMgr.GetIPv4()
+		if err != nil {
+			return fmt.Errorf("failed to read Wi-Fi IP address after connect: %w", err)
+		}
+		fmt.Printf("[*] Wi-Fi IPv4 on en0 after connect: %s\n", ip)
+
+		onRobotNet, err = wifiMgr.IsOnRobotNetwork()
+		if err != nil {
+			return fmt.Errorf("failed to verify robot network after connect: %w", err)
+		}
+		if !onRobotNet {
+			return fmt.Errorf("Wi-Fi IP %s is not in robot subnet 192.168.43.x after connect - exiting", ip)
+		}
+	} else {
+		fmt.Println("[>] Already on robot subnet (192.168.43.x), skipping Wi-Fi connect")
+	}
+
+	fmt.Println("[OK] Ready on robot Wi-Fi (192.168.43.x)")
 
 	// Connect via ADB
 	fmt.Println("\n[+] Connecting to robot via ADB...")

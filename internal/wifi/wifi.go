@@ -1,11 +1,110 @@
+//go:build darwin
+
 package wifi
+
+/*
+#cgo CFLAGS: -x objective-c -fmodules -fobjc-arc
+#cgo LDFLAGS: -framework CoreWLAN -framework Foundation
+
+#import <CoreWLAN/CoreWLAN.h>
+#import <Foundation/Foundation.h>
+#include <stdlib.h>
+#include <string.h>
+
+// cwCurrentSSID returns the current Wi-Fi SSID as a newly allocated
+// C string (or NULL if not associated). Caller must free().
+const char* cwCurrentSSID() {
+	@autoreleasepool {
+		CWWiFiClient *client = [CWWiFiClient sharedWiFiClient];
+		CWInterface *iface = [client interface];
+		if (!iface) {
+			return NULL;
+		}
+
+		NSString *ssid = iface.ssid;
+        if (!ssid) {
+            return NULL;
+        }
+
+        const char *utf8 = [ssid UTF8String];
+        if (!utf8) {
+            return NULL;
+        }
+
+        return strdup(utf8);
+    }
+}
+
+// cwConnectNetwork attempts to associate to the given SSID with an
+// optional password. On error it returns a non-zero code and sets
+// *errOut to a newly allocated error message.
+int cwConnectNetwork(const char* cssid, const char* cpassword, char** errOut) {
+    @autoreleasepool {
+        if (!cssid) {
+            *errOut = strdup("SSID is nil");
+            return 1;
+        }
+
+		CWWiFiClient *client = [CWWiFiClient sharedWiFiClient];
+		CWInterface *iface = [client interface];
+		if (!iface) {
+			*errOut = strdup("No Wi-Fi interface found");
+			return 2;
+		}
+
+		NSString *ssid = [NSString stringWithUTF8String:cssid];
+        if (!ssid) {
+            *errOut = strdup("Invalid SSID");
+            return 3;
+        }
+
+        NSError *error = nil;
+		NSSet<CWNetwork *> *nets = [iface scanForNetworksWithName:ssid error:&error];
+        if (!nets || [nets count] == 0) {
+            if (error) {
+                const char *msg = [[error localizedDescription] UTF8String];
+                *errOut = strdup(msg ? msg : "Network not found");
+            } else {
+                *errOut = strdup("Network not found");
+            }
+            return 4;
+        }
+
+        CWNetwork *target = [nets anyObject];
+
+        NSString *password = nil;
+        if (cpassword && strlen(cpassword) > 0) {
+            password = [NSString stringWithUTF8String:cpassword];
+        }
+
+        NSError *assocError = nil;
+		BOOL ok = [iface associateToNetwork:target password:password error:&assocError];
+		if (!ok) {
+			if (assocError) {
+				NSString *full = [NSString stringWithFormat:@"Association failed (%@/%ld): %@",
+								   assocError.domain,
+								   (long)assocError.code,
+								   assocError.localizedDescription ?: @"<no description>"];
+				const char *msg = [full UTF8String];
+				*errOut = strdup(msg ? msg : "Association failed");
+			} else {
+				*errOut = strdup("Association failed");
+			}
+			return 5;
+		}
+
+		return 0;
+    }
+}
+*/
+import "C"
 
 import (
 	"fmt"
+	"net"
 	"os/exec"
-	"runtime"
 	"strings"
-	"time"
+	"unsafe"
 )
 
 // Manager handles Wi-Fi operations
@@ -15,7 +114,7 @@ type Manager struct {
 
 // NewManager creates a new Wi-Fi manager
 func NewManager() *Manager {
-	// Default to en0 for macOS
+	// Default to en0 for macOS; CoreWLAN uses the default interface
 	return &Manager{
 		iface: "en0",
 	}
@@ -23,76 +122,95 @@ func NewManager() *Manager {
 
 // GetCurrentSSID returns the currently connected Wi-Fi SSID
 func (m *Manager) GetCurrentSSID() (string, error) {
-	if runtime.GOOS != "darwin" {
-		return "", fmt.Errorf("unsupported OS: %s", runtime.GOOS)
-	}
-
-	cmd := exec.Command("networksetup", "-getairportnetwork", m.iface)
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get current Wi-Fi: %w", err)
-	}
-
-	// Output format: "Current Wi-Fi Network: NetworkName"
-	line := strings.TrimSpace(string(output))
-	if strings.Contains(line, "You are not associated with an AirPort network") {
+	ssidC := C.cwCurrentSSID()
+	if ssidC == nil {
 		return "", nil
 	}
+	defer C.free(unsafe.Pointer(ssidC))
 
-	parts := strings.SplitN(line, ": ", 2)
-	if len(parts) != 2 {
-		return "", fmt.Errorf("unexpected output format: %s", line)
-	}
-
-	return strings.TrimSpace(parts[1]), nil
+	return C.GoString(ssidC), nil
 }
 
-// Connect connects to a Wi-Fi network
+// Connect connects to a Wi-Fi network using CoreWLAN
 func (m *Manager) Connect(ssid, password string) error {
-	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	fmt.Printf("[*] Connecting to %s...\n", ssid)
+
+	cssid := C.CString(ssid)
+	defer C.free(unsafe.Pointer(cssid))
+
+	cpassword := C.CString(password)
+	defer C.free(unsafe.Pointer(cpassword))
+
+	var errOut *C.char
+	code := C.cwConnectNetwork(cssid, cpassword, &errOut)
+	if code != 0 {
+		var msg string
+		if errOut != nil {
+			msg = C.GoString(errOut)
+			C.free(unsafe.Pointer(errOut))
+		} else {
+			msg = "unknown error"
+		}
+
+		// CoreWLAN association failed; fall back silently to networksetup.
+		// We keep the CoreWLAN error text in `msg` so that if the
+		// networksetup fallback also fails, the combined error still
+		// contains useful diagnostics.
+		args := []string{"-setairportnetwork", m.iface, ssid}
+		if password != "" {
+			args = append(args, password)
+		}
+		cmd := exec.Command("networksetup", args...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to connect to %s via CoreWLAN (code=%d, %s) and networksetup: %w (output: %s)", ssid, int(code), msg, err, string(output))
+		}
 	}
 
-	cmd := exec.Command("networksetup", "-setairportnetwork", m.iface, ssid, password)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to connect to Wi-Fi: %w (output: %s)", err, string(output))
-	}
-
+	fmt.Println("[OK] Connected to", ssid)
 	return nil
 }
 
-// ConnectWithRetry attempts to connect to Wi-Fi with retries
+// ConnectWithRetry is kept for compatibility but just calls Connect once
 func (m *Manager) ConnectWithRetry(ssid, password string, maxRetries int) error {
-	var lastErr error
+	return m.Connect(ssid, password)
+}
 
-	for i := 0; i < maxRetries; i++ {
-		err := m.Connect(ssid, password)
-		if err == nil {
-			// Wait a moment to ensure connection is established
-			time.Sleep(2 * time.Second)
+// GetIPv4 returns the IPv4 address of the Wi-Fi interface (e.g., en0)
+func (m *Manager) GetIPv4() (string, error) {
+	iface, err := net.InterfaceByName(m.iface)
+	if err != nil {
+		return "", fmt.Errorf("failed to get interface %s: %w", m.iface, err)
+	}
 
-			// Verify connection
-			currentSSID, checkErr := m.GetCurrentSSID()
-			if checkErr == nil && currentSSID == ssid {
-				return nil
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", fmt.Errorf("failed to get addresses for %s: %w", m.iface, err)
+	}
+
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok {
+			ip4 := ipNet.IP.To4()
+			if ip4 != nil {
+				return ip4.String(), nil
 			}
-
-			if checkErr != nil {
-				lastErr = checkErr
-			} else {
-				lastErr = fmt.Errorf("connected to wrong network: %s", currentSSID)
-			}
-		} else {
-			lastErr = err
-		}
-
-		if i < maxRetries-1 {
-			time.Sleep(2 * time.Second)
 		}
 	}
 
-	return fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
+	return "", nil
+}
+
+// IsOnRobotNetwork reports whether the Wi-Fi IPv4 is in the FTC robot subnet
+// Current FTC default robot controller hotspot uses 192.168.43.x
+func (m *Manager) IsOnRobotNetwork() (bool, error) {
+	ip, err := m.GetIPv4()
+	if err != nil {
+		return false, err
+	}
+	if ip == "" {
+		return false, nil
+	}
+	return strings.HasPrefix(ip, "192.168.43."), nil
 }
 
 // IsConnected checks if connected to a specific SSID
