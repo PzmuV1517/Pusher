@@ -26,22 +26,22 @@ func Connect() error {
 
 	addr := fmt.Sprintf("%s:%s", RobotIP, RobotPort)
 	fmt.Printf("[*] Attempting ADB connection to %s...\n", addr)
-	
+
 	maxRetries := 5
 	var lastErr error
-	
+
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
 			fmt.Printf("[*] ADB retry %d/%d...\n", i+1, maxRetries)
 			time.Sleep(3 * time.Second)
 		}
-		
+
 		cmd := exec.Command("adb", "connect", addr)
 		output, err := cmd.CombinedOutput()
 		outputStr := strings.TrimSpace(string(output))
-		
+
 		fmt.Printf("[*] ADB response: %s\n", outputStr)
-		
+
 		if err != nil {
 			lastErr = fmt.Errorf("adb command failed: %w", err)
 			continue
@@ -52,7 +52,7 @@ func Connect() error {
 			fmt.Println("[OK] ADB connection established")
 			return nil
 		}
-		
+
 		lastErr = fmt.Errorf("unexpected response: %s", outputStr)
 	}
 
