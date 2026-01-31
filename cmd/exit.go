@@ -4,15 +4,14 @@ import (
 	"fmt"
 
 	"github.com/andreibanu/pusher/internal/adb"
-	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/wifi"
 	"github.com/spf13/cobra"
 )
 
 var exitCmd = &cobra.Command{
 	Use:   "exit",
-	Short: "Disconnect and restore Wi-Fi",
-	Long:  `Disconnects ADB and restores the previous Wi-Fi connection.`,
+	Short: "Disconnect from robot",
+	Long:  `Disconnects ADB from the robot and power-cycles Wi-Fi so macOS can auto-join your usual network.`,
 	RunE:  runExit,
 }
 
@@ -27,32 +26,15 @@ func runExit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Restore Wi-Fi
-	lastWiFi, err := config.GetLastWiFi()
-	if err != nil || lastWiFi == "" {
-		fmt.Println("\nNo previous Wi-Fi to restore.")
-		return nil
-	}
-
-	fmt.Printf("\n[>] Restoring Wi-Fi connection to: %s\n", lastWiFi)
-
+	// Power-cycle Wi-Fi so we disconnect from the robot network.
 	wifiMgr := wifi.NewManager()
-
-	// Try to connect back to the last Wi-Fi
-	// Note: We don't have the password, so this will only work if it's a known network
-	currentSSID, err := wifiMgr.GetCurrentSSID()
-	if err == nil && currentSSID == lastWiFi {
-		fmt.Println("[OK] Already connected to previous Wi-Fi")
+	fmt.Println("\n[*] Power-cycling Wi-Fi (off then on)...")
+	if err := wifiMgr.PowerCycle(); err != nil {
+		fmt.Printf("[!] Warning: failed to power-cycle Wi-Fi: %v\n", err)
+		fmt.Println("    You may need to disconnect from the robot Wi-Fi manually.")
 		return nil
 	}
 
-	// Attempt to connect without password (for known networks)
-	if err := wifiMgr.Connect(lastWiFi, ""); err != nil {
-		fmt.Printf("[!] Could not automatically restore Wi-Fi: %v\n", err)
-		fmt.Printf("Please manually reconnect to: %s\n", lastWiFi)
-		return nil
-	}
-
-	fmt.Println("[OK] Wi-Fi restored")
+	fmt.Println("[OK] Wi-Fi power-cycled. macOS should now auto-join your usual network.")
 	return nil
 }

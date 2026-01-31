@@ -14,9 +14,10 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "pusher",
-	Short: "FTC Robot deployment tool",
-	Long:  `Pusher automates connecting to FTC robots and deploying Android Studio projects.`,
+	Use:          "pusher",
+	Short:        "FTC Robot deployment tool",
+	Long:         `Pusher automates connecting to FTC robots and deploying Android Studio projects.`,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if versionFlag {
 			fmt.Printf("Pusher version %s\n", appVersion)
@@ -50,6 +51,7 @@ func init() {
 	rootCmd.AddCommand(connectCmd)
 	rootCmd.AddCommand(disconnectCmd)
 	rootCmd.AddCommand(exitCmd)
+	rootCmd.AddCommand(prepareCmd)
 	rootCmd.AddCommand(profileCmd)
 	rootCmd.AddCommand(helpCmd)
 }
