@@ -7,13 +7,21 @@ import (
 )
 
 const asciiArt = `
- ____            _               
-|  _ \ _   _ ___| |__   ___ _ __ 
-| |_) | | | / __| '_ \ / _ \ '__|
-|  __/| |_| \__ \ | | |  __/ |   
-|_|    \__,_|___/_| |_|\___|_|   
+From Team #14270
 
-FTC Robot Deployment Tool
+ ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗████████╗██╗   ██╗███╗   ███╗
+██╔═══██╗██║   ██║██╔══██╗████╗  ██║╚══██╔══╝██║   ██║████╗ ████║
+██║   ██║██║   ██║███████║██╔██╗ ██║   ██║   ██║   ██║██╔████╔██║
+██║▄▄ ██║██║   ██║██╔══██║██║╚██╗██║   ██║   ██║   ██║██║╚██╔╝██║
+╚██████╔╝╚██████╔╝██║  ██║██║ ╚████║   ██║   ╚██████╔╝██║ ╚═╝ ██║
+ ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝ ╚═╝     ╚═╝
+
+ ██████╗  ██████╗ ██████╗  ██████╗ ████████╗██╗ ██████╗███████╗
+██╔══██╗██╔═══██╗██╔══██╗██╔═══██╗╚══██╔══╝██║██╔════╝██╔════╝
+██████╔╝██║   ██║██████╔╝██║   ██║   ██║   ██║██║     ███████╗
+██╔══██╗██║   ██║██╔══██╗██║   ██║   ██║   ██║██║     ╚════██║
+██║  ██║╚██████╔╝██████╔╝╚██████╔╝   ██║   ██║╚██████╗███████║
+╚═╝  ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   ╚═╝ ╚═════╝╚══════╝ 
 `
 
 var helpCmd = &cobra.Command{
@@ -25,10 +33,11 @@ var helpCmd = &cobra.Command{
 func runHelp(cmd *cobra.Command, args []string) {
 	fmt.Print(asciiArt)
 	fmt.Println("Made with love by:")
-	fmt.Println("  Credits: Andrei Banu")
+	fmt.Println("Andrei \"PzmuV1517\" Banu")
 	fmt.Println("")
 	fmt.Println("Commands:")
 	fmt.Println("  pusher                Connect, build, and deploy")
+	fmt.Println("  pusher --version      Show version information")
 	fmt.Println("  pusher dc             Disconnect adb")
 	fmt.Println("  pusher disconnect     Alias for dc")
 	fmt.Println("  pusher exit           Disconnect adb and restore Wi-Fi")
