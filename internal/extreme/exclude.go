@@ -48,14 +48,22 @@ func blockFor(root string, keep []string) string {
 	// A keep entry is either a package, which ends in a slash once trimmed, or
 	// a single class. Both are matched by prefix, with the class form pinned to
 	// a dot so Foo does not also keep FooBar.
+	quote := "'"
+	indent := "                        "
+	if KotlinDSL(root) {
+		quote = `"`
+		indent = "                    "
+	}
+
 	var conditions strings.Builder
 	for _, entry := range keep {
 		trimmed := strings.TrimSuffix(entry, "/")
+		suffix := "/"
 		if isClassEntry(root, trimmed) {
-			fmt.Fprintf(&conditions, " &&\n                        !path.startsWith('%s.')", trimmed)
-			continue
+			suffix = "."
 		}
-		fmt.Fprintf(&conditions, " &&\n                        !path.startsWith('%s/')", trimmed)
+		fmt.Fprintf(&conditions, " &&\n%s!path.startsWith(%s%s%s%s)",
+			indent, quote, trimmed, suffix, quote)
 	}
 
 	kept := "nothing"
@@ -63,26 +71,53 @@ func blockFor(root string, keep []string) string {
 		kept = strings.Join(keep, ", ")
 	}
 
-	return beginMarker + `
+	head := beginMarker + `
 //
 // Remove this block, or run the menu entry that added it, to go back to
 // packaging team code in the APK.
 //
-// Kept in the APK anyway: ` + kept + `
-android {
+// Kept in the APK anyway: ` + kept + "\n"
+
+	if KotlinDSL(root) {
+		return head + kotlinBlock(conditions.String()) + "\n" + endMarker
+	}
+	return head + groovyBlock(conditions.String()) + "\n" + endMarker
+}
+
+func groovyBlock(conditions string) string {
+	return `android {
     sourceSets {
         main {
             java {
                 exclude { details ->
                     def path = details.path
                     !details.directory &&
-                        path.startsWith('` + TeamPackage + `/')` + conditions.String() + `
+                        path.startsWith('` + TeamPackage + `/')` + conditions + `
                 }
             }
         }
     }
+}`
 }
-` + endMarker
+
+// kotlinBlock is the same exclusion for a build.gradle.kts.
+//
+// The cast is not decoration. The Kotlin DSL hands out the newer
+// com.android.build.api.dsl.AndroidSourceDirectorySet, which has no exclude at
+// all; the object behind it implements the older interface, which does. Groovy
+// never showed this because it dispatches dynamically.
+func kotlinBlock(conditions string) string {
+	return `android {
+    sourceSets {
+        getByName("main") {
+            (java as com.android.build.gradle.api.AndroidSourceDirectorySet).exclude { details ->
+                val path = details.path
+                !details.isDirectory &&
+                    path.startsWith("` + TeamPackage + `/")` + conditions + `
+            }
+        }
+    }
+}`
 }
 
 // isClassEntry reports whether a keep entry names one class rather than a
@@ -110,22 +145,23 @@ func isClassEntry(root, entry string) bool {
 	return base != "" && base[0] >= 'A' && base[0] <= 'Z'
 }
 
-// GradleFile is the module file the exclusion lives in.
+// GradleFile is the module file the exclusion lives in, in whichever dialect
+// the project uses.
 func GradleFile(root string) string {
-	return filepath.Join(root, Module, "build.gradle")
+	groovy := filepath.Join(root, Module, "build.gradle")
+	if _, err := os.Stat(groovy); err == nil {
+		return groovy
+	}
+	if _, err := os.Stat(groovy + ".kts"); err == nil {
+		return groovy + ".kts"
+	}
+	return groovy
 }
 
-// KotlinDSL reports whether the module is configured with the Kotlin DSL.
-//
-// The block this writes is Groovy, and there is nowhere to put it in a
-// build.gradle.kts. Saying so beats failing to read a file that was never
-// going to be there.
+// KotlinDSL reports whether the module is configured with the Kotlin DSL, which
+// needs a differently written block.
 func KotlinDSL(root string) bool {
-	if _, err := os.Stat(GradleFile(root)); err == nil {
-		return false
-	}
-	_, err := os.Stat(GradleFile(root) + ".kts")
-	return err == nil
+	return strings.HasSuffix(GradleFile(root), ".kts")
 }
 
 // Supported reports whether this project can be reloaded at all, and why not.
@@ -134,11 +170,6 @@ func KotlinDSL(root string) bool {
 // leaves team code out of the APK with nothing putting it back, which is a
 // robot with no OpModes.
 func Supported(root string) error {
-	if KotlinDSL(root) {
-		return fmt.Errorf("this project is configured with the Kotlin DSL " +
-			"(TeamCode/build.gradle.kts), which Pusher Extreme cannot edit yet")
-	}
-
 	if _, err := os.Stat(GradleFile(root)); err != nil {
 		return fmt.Errorf("no %s to add the exclusion to", filepath.Join(Module, "build.gradle"))
 	}

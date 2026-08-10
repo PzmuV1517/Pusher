@@ -579,19 +579,22 @@ func TestSetupRefusesWhatItCannotReload(t *testing.T) {
 		}
 	})
 
-	t.Run("kotlin dsl", func(t *testing.T) {
+	t.Run("kotlin dsl with java sources is supported", func(t *testing.T) {
 		root := build(t, "build.gradle.kts", "Robot.java")
 
 		if !KotlinDSL(root) {
 			t.Fatal("a build.gradle.kts module was not recognised")
 		}
-
-		err := Supported(root)
-		if err == nil {
-			t.Fatal("a Kotlin DSL project was accepted")
+		if err := Supported(root); err != nil {
+			t.Errorf("a Kotlin DSL project with Java sources was refused: %v", err)
 		}
-		if !strings.Contains(err.Error(), "Kotlin DSL") {
-			t.Errorf("the reason does not mention the DSL: %v", err)
+	})
+
+	t.Run("kotlin dsl and kotlin sources is still refused", func(t *testing.T) {
+		root := build(t, "build.gradle.kts", "Robot.java", "Intake.kt")
+
+		if err := Supported(root); err == nil {
+			t.Error("Kotlin sources were accepted because the DSL now is")
 		}
 	})
 
@@ -716,6 +719,93 @@ func TestTheGradleBlockPinsAClassToItsDot(t *testing.T) {
 		"!path.startsWith('org/firstinspires/ftc/teamcode/tuning/')") {
 		t.Error("a package keep is not matched as a directory")
 	}
+}
+
+// The block has to be written in the dialect the module uses, and the two are
+// not interchangeable. Verified against a real Kotlin DSL project: the source
+// set went from 1 file to 0 with the block, and stayed at 1 when that file was
+// on the keep list.
+func TestTheBlockIsWrittenInTheModulesDialect(t *testing.T) {
+	build := func(t *testing.T, gradleName string) string {
+		root := t.TempDir()
+
+		src := filepath.Join(root, SourceRoot, filepath.FromSlash(TeamPackage), "hw")
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(src, "MyDriver.java"), []byte("// x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, Module, gradleName), []byte("android { }"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return root
+	}
+
+	keep := TeamPackage + "/hw/MyDriver"
+
+	t.Run("groovy", func(t *testing.T) {
+		root := build(t, "build.gradle")
+		if err := Exclude(root, keep); err != nil {
+			t.Fatal(err)
+		}
+
+		content := string(mustRead(t, GradleFile(root)))
+		for _, want := range []string{
+			"main {",
+			"def path = details.path",
+			"!details.directory",
+			"'" + TeamPackage + "/'",
+		} {
+			if !strings.Contains(content, want) {
+				t.Errorf("groovy block is missing %q:\n%s", want, content)
+			}
+		}
+		if strings.Contains(content, "getByName") {
+			t.Error("groovy block contains Kotlin DSL syntax")
+		}
+	})
+
+	t.Run("kotlin", func(t *testing.T) {
+		root := build(t, "build.gradle.kts")
+		if err := Exclude(root, keep); err != nil {
+			t.Fatal(err)
+		}
+
+		if !strings.HasSuffix(GradleFile(root), ".kts") {
+			t.Fatal("the block went into the wrong file")
+		}
+
+		content := string(mustRead(t, GradleFile(root)))
+		for _, want := range []string{
+			`getByName("main")`,
+			// The Kotlin DSL exposes the newer AndroidSourceDirectorySet, which
+			// has no exclude. Without this cast the build file does not compile.
+			"com.android.build.gradle.api.AndroidSourceDirectorySet",
+			"val path = details.path",
+			"!details.isDirectory",
+			`"` + TeamPackage + `/"`,
+			`!path.startsWith("` + keep + `.")`,
+		} {
+			if !strings.Contains(content, want) {
+				t.Errorf("kotlin block is missing %q:\n%s", want, content)
+			}
+		}
+		if strings.Contains(content, "def path") || strings.Contains(content, "'"+TeamPackage) {
+			t.Error("kotlin block contains Groovy syntax")
+		}
+
+		// And it still reads back, since the reload excludes what the block kept.
+		if got := Kept(root); len(got) != 1 || got[0] != keep {
+			t.Errorf("Kept read back %v", got)
+		}
+		if !Excluded(root) {
+			t.Error("Excluded does not see the block in a .kts file")
+		}
+		if err := Include(root); err != nil || Excluded(root) {
+			t.Errorf("Include did not remove the block: %v", err)
+		}
+	})
 }
 
 // Excluding a directory prunes the subtree before any file under it is seen,
