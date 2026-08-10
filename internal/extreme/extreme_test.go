@@ -477,10 +477,47 @@ func TestTheSignatureNoticesKotlinDSLBuildFiles(t *testing.T) {
 	}
 }
 
+// A version catalog names the version of every library that goes into the APK.
+// Changing one changes the build, and a project keeping its SDK version there
+// was signing that file as if it were documentation.
+func TestTheSignatureNoticesAVersionCatalog(t *testing.T) {
+	root := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(root, "gradle"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "build.gradle.kts"), []byte("// root"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	catalog := filepath.Join(root, "gradle", "libs.versions.toml")
+	if err := os.WriteFile(catalog, []byte("[versions]\nftc = \"11.1.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := Signature(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(catalog, []byte("[versions]\nftc = \"11.0.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := Signature(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if before == after {
+		t.Error("changing the SDK version in a catalog did not change the signature")
+	}
+}
+
 func TestBuildInputsCoverBothGradleDialects(t *testing.T) {
 	for _, name := range []string{
 		"build.gradle", "build.gradle.kts", "settings.gradle.kts",
-		"gradle.properties", "blob-dev.aar", "something.jar",
+		"gradle.properties", "libs.versions.toml", "blob-dev.aar", "something.jar",
 	} {
 		if !isBuildInput(name) {
 			t.Errorf("%s should be part of the signature", name)

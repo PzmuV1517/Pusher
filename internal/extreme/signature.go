@@ -93,6 +93,12 @@ func isBuildInput(name string) bool {
 		return true
 	case name == "gradle.properties":
 		return true
+	// A version catalog decides which versions of every library go into the
+	// APK, so editing one changes the build as surely as editing a build file.
+	// Found on a real project, where gradle/libs.versions.toml carried the SDK
+	// and every library and was signed as if it were documentation.
+	case strings.HasSuffix(name, ".versions.toml"):
+		return true
 	case strings.HasSuffix(name, ".aar"), strings.HasSuffix(name, ".jar"):
 		return true
 	}
