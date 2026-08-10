@@ -919,7 +919,10 @@ func window(tall []int, offset, cursor, budget int) (start, end int) {
 			if to+1 < total {
 				room--
 			}
-			if tall[to] > room {
+			// The first row goes in whatever the budget, so a terminal too
+			// short for one entry and its markers shows the entry rather than
+			// two arrows and nothing between them.
+			if to > from && tall[to] > room {
 				break
 			}
 			used += tall[to]
