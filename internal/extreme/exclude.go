@@ -115,6 +115,49 @@ func GradleFile(root string) string {
 	return filepath.Join(root, Module, "build.gradle")
 }
 
+// KotlinDSL reports whether the module is configured with the Kotlin DSL.
+//
+// The block this writes is Groovy, and there is nowhere to put it in a
+// build.gradle.kts. Saying so beats failing to read a file that was never
+// going to be there.
+func KotlinDSL(root string) bool {
+	if _, err := os.Stat(GradleFile(root)); err == nil {
+		return false
+	}
+	_, err := os.Stat(GradleFile(root) + ".kts")
+	return err == nil
+}
+
+// Supported reports whether this project can be reloaded at all, and why not.
+//
+// Checked before anything is written. Setting up a project that cannot reload
+// leaves team code out of the APK with nothing putting it back, which is a
+// robot with no OpModes.
+func Supported(root string) error {
+	if KotlinDSL(root) {
+		return fmt.Errorf("this project is configured with the Kotlin DSL " +
+			"(TeamCode/build.gradle.kts), which Pusher Extreme cannot edit yet")
+	}
+
+	if _, err := os.Stat(GradleFile(root)); err != nil {
+		return fmt.Errorf("no %s to add the exclusion to", filepath.Join(Module, "build.gradle"))
+	}
+
+	kotlin := 0
+	filepath.Walk(filepath.Join(root, SourceRoot), func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && strings.HasSuffix(path, ".kt") {
+			kotlin++
+		}
+		return nil
+	})
+	if kotlin > 0 {
+		return fmt.Errorf("this project has %d Kotlin source file(s), which reloading "+
+			"compiles with javac and would silently drop", kotlin)
+	}
+
+	return nil
+}
+
 // Excluded reports whether team code is being kept out of the APK.
 func Excluded(root string) bool {
 	content, err := os.ReadFile(GradleFile(root))
@@ -164,6 +207,10 @@ func Kept(root string) []string {
 // class's own dependencies leaves it in the source set with nothing to resolve
 // against, and the build fails on the import.
 func Exclude(root string, keep ...string) error {
+	if err := Supported(root); err != nil {
+		return err
+	}
+
 	keep = Closure(root, keep)
 
 	path := GradleFile(root)

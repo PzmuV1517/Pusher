@@ -57,21 +57,42 @@ func FindProject() (*Project, error) {
 }
 
 // Sources lists the team's Java files.
+//
+// Anything else under the source root is an error rather than something to walk
+// past. Reloading compiles with javac, so a Kotlin file is not compiled, not
+// delivered, and not in the APK either once team code is excluded. The reload
+// would report success having quietly dropped it. Measured on a real project:
+// two of nine files would have been reloaded and seven would have vanished.
 func (p *Project) Sources() ([]string, error) {
 	root := filepath.Join(p.Root, SourceRoot)
 
-	var files []string
+	var files, unsupported []string
+
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".java") {
+		if info.IsDir() {
+			return nil
+		}
+
+		switch {
+		case strings.HasSuffix(path, ".java"):
 			files = append(files, path)
+		case strings.HasSuffix(path, ".kt"):
+			unsupported = append(unsupported, path)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if len(unsupported) > 0 {
+		return nil, fmt.Errorf("Pusher Extreme cannot reload Kotlin: %d .kt file(s) under %s\n"+
+			"    They would be dropped from both the reload and the APK.\n"+
+			"    Undo the setup in `pusher settings` and deploy normally",
+			len(unsupported), SourceRoot)
 	}
 
 	if len(files) == 0 {

@@ -127,6 +127,13 @@ func (m *SettingsModel) setUpExtreme() {
 		return
 	}
 
+	// Checked before anything is written, so a project this cannot reload is
+	// told so rather than left with team code out of its APK.
+	if err := extreme.Supported(m.extreme.root); err != nil {
+		m.err = err
+		return
+	}
+
 	// Hardware device drivers are kept whatever anyone would prefer. Every
 	// reload builds a new classloader, so a reloaded driver is a different
 	// class each time while the device in the hardware map was built under an

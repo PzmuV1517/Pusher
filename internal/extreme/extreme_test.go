@@ -533,6 +533,77 @@ func TestBuildInputsCoverBothGradleDialects(t *testing.T) {
 	}
 }
 
+// Reloading compiles with javac. A Kotlin file is not compiled, not delivered,
+// and not in the APK either once team code is excluded, so setting this up on a
+// Kotlin project leaves a robot with almost nothing on it while every command
+// reports success. Measured on a real project: two of nine files would have
+// reloaded and seven would have vanished.
+func TestSetupRefusesWhatItCannotReload(t *testing.T) {
+	build := func(t *testing.T, gradleName string, sources ...string) string {
+		root := t.TempDir()
+
+		src := filepath.Join(root, SourceRoot, filepath.FromSlash(TeamPackage))
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range sources {
+			if err := os.WriteFile(filepath.Join(src, name), []byte("// x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		gradle := filepath.Join(root, Module, gradleName)
+		if err := os.WriteFile(gradle, []byte("android { }"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return root
+	}
+
+	t.Run("kotlin sources", func(t *testing.T) {
+		root := build(t, "build.gradle", "Robot.java", "Intake.kt")
+
+		err := Supported(root)
+		if err == nil {
+			t.Fatal("a project with Kotlin sources was accepted")
+		}
+		if !strings.Contains(err.Error(), "Kotlin") {
+			t.Errorf("the reason does not mention Kotlin: %v", err)
+		}
+
+		// And nothing was written on the way to finding out.
+		if err := Exclude(root); err == nil {
+			t.Error("Exclude went ahead anyway")
+		}
+		if Excluded(root) {
+			t.Error("Exclude left a block behind on a project it refused")
+		}
+	})
+
+	t.Run("kotlin dsl", func(t *testing.T) {
+		root := build(t, "build.gradle.kts", "Robot.java")
+
+		if !KotlinDSL(root) {
+			t.Fatal("a build.gradle.kts module was not recognised")
+		}
+
+		err := Supported(root)
+		if err == nil {
+			t.Fatal("a Kotlin DSL project was accepted")
+		}
+		if !strings.Contains(err.Error(), "Kotlin DSL") {
+			t.Errorf("the reason does not mention the DSL: %v", err)
+		}
+	})
+
+	t.Run("plain java project is fine", func(t *testing.T) {
+		root := build(t, "build.gradle", "Robot.java", "Auto.java")
+
+		if err := Supported(root); err != nil {
+			t.Errorf("an ordinary project was refused: %v", err)
+		}
+	})
+}
+
 func TestTheSignatureSkipsBuildOutput(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, Module, "build", "intermediates"), 0o755); err != nil {
