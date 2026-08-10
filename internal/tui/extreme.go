@@ -36,8 +36,12 @@ var extremeHelp = []string{
 	"Reloads instead of installing when that is equivalent,\n" +
 		"and installs normally when it is not.",
 
-	"\n",
+	"",
 }
+
+// extremeWarning is the one thing somebody has to know before turning this on.
+const extremeWarning = "While set up, team code is not in the APK: a teammate " +
+	"deploying from Android Studio gets a robot with no OpModes."
 
 type extremeState struct {
 	root      string
@@ -188,8 +192,9 @@ func (m *SettingsModel) undoExtreme() {
 func (m *SettingsModel) viewExtreme() string {
 	var b strings.Builder
 
-	b.WriteString(helpStyle.Render("  Pusher Extreme") + "  " +
-		helpStyle.Render("reload OpModes instead of installing an APK") + "\n\n")
+	b.WriteString(helpStyle.Render("  "+fit(
+		"Pusher Extreme   reload OpModes instead of installing an APK",
+		textWidth(m.width))) + "\n\n")
 
 	b.WriteString(m.extremeStatusLines())
 
@@ -201,20 +206,17 @@ func (m *SettingsModel) viewExtreme() string {
 	}
 
 	b.WriteString(m.renderList(len(extremeItems), func(i int) string {
-		return renderRow(i == m.cursor, extremeItems[i], values[i], 24)
+		return renderRow(i == m.cursor, extremeItems[i], values[i], 24, m.width)
 	}))
 
+	b.WriteString(note(extremeHelp, m.cursor, m.width))
+
 	b.WriteString("\n")
-	if m.cursor < len(extremeHelp) {
-		for _, line := range strings.Split(extremeHelp[m.cursor], "\n") {
-			b.WriteString("  " + helpStyle.Render(line) + "\n")
-		}
+	for _, line := range wrap(extremeWarning, textWidth(m.width)) {
+		b.WriteString("  " + errStyle.Render(line) + "\n")
 	}
 
-	b.WriteString("\n" + errStyle.Render("  While set up, team code is not in the APK: a teammate deploying") + "\n")
-	b.WriteString("  " + errStyle.Render("from Android Studio gets a robot with no OpModes.") + "\n")
-
-	b.WriteString("\n" + helpStyle.Render("  enter choose · esc back") + "\n")
+	b.WriteString("\n" + helpStyle.Render("  "+fit("enter choose · esc back", textWidth(m.width))) + "\n")
 	return b.String()
 }
 
@@ -225,17 +227,17 @@ func (m *SettingsModel) extremeStatusLines() string {
 
 	// Two lines, always. The list below must not move when this changes.
 	if !m.extreme.haveRoot {
-		b.WriteString("  " + unsetStyle.Render("No FTC project here, so there is nothing to set up.") + "\n\n")
+		b.WriteString("  " + unsetStyle.Render(fit("No FTC project here, so there is nothing to set up.", textWidth(m.width))) + "\n\n")
 		return b.String()
 	}
 
 	switch {
 	case !m.extreme.set:
-		b.WriteString("  " + unsetStyle.Render("Not set up: team code is packaged in the APK as usual.") + "\n")
+		b.WriteString("  " + unsetStyle.Render(fit("Not set up: team code is packaged in the APK as usual.", textWidth(m.width))) + "\n")
 	case m.extreme.status.Usable():
-		b.WriteString("  " + okStyle.Render("Ready: the next deploy reloads instead of installing.") + "\n")
+		b.WriteString("  " + okStyle.Render(fit("Ready: the next deploy reloads instead of installing.", textWidth(m.width))) + "\n")
 	default:
-		fmt.Fprintf(&b, "  %s\n", scrollStyle.Render(trimTo("Next deploy installs: "+m.extreme.status.Reason, 70)))
+		fmt.Fprintf(&b, "  %s\n", scrollStyle.Render(fit("Next deploy installs: "+m.extreme.status.Reason, textWidth(m.width))))
 	}
 
 	extras := ""
@@ -251,16 +253,7 @@ func (m *SettingsModel) extremeStatusLines() string {
 	if n := len(m.extreme.drivers); n > 0 && !m.extreme.set {
 		extras = fmt.Sprintf("%d hardware driver(s) will stay in the APK", n)
 	}
-	fmt.Fprintf(&b, "  %s\n\n", helpStyle.Render(trimTo(extras, 70)))
+	fmt.Fprintf(&b, "  %s\n\n", helpStyle.Render(fit(extras, textWidth(m.width))))
 
 	return b.String()
-}
-
-// trimTo keeps a line to one line, since the screen's height is fixed and a
-// wrapped line would push the rest of it down.
-func trimTo(s string, width int) string {
-	if len(s) <= width {
-		return s
-	}
-	return s[:width-1] + "…"
 }

@@ -122,6 +122,7 @@ type hwModel struct {
 	cursor int
 	offset int
 	height int
+	width  int
 
 	store  *robotcfg.Store
 	serial string
@@ -258,6 +259,7 @@ func (m *hwModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
+		m.width = msg.Width
 		m.offset = clampOffset(m.offset, m.cursor, m.visibleRows(), m.listLength())
 		return m, nil
 

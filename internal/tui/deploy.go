@@ -19,10 +19,6 @@ var deployItems = []string{
 	"Back",
 }
 
-// deployHelpLines is how many lines every note occupies, so the screen does not
-// change height as the cursor moves.
-const deployHelpLines = 3
-
 var deployHelp = []string{
 	"Sends only the parts of the APK that changed since the last deploy.\n" +
 		"Big win over Wi-Fi, little to nothing over USB.",
@@ -147,12 +143,12 @@ func (m *SettingsModel) viewDeploy() string {
 	}
 
 	b.WriteString(m.renderList(len(deployItems), func(i int) string {
-		return renderRow(i == m.cursor, deployItems[i], values[i], 37)
+		return renderRow(i == m.cursor, deployItems[i], values[i], 37, m.width)
 	}))
 
-	b.WriteString(helpBlock(deployHelp, m.cursor, deployHelpLines))
+	b.WriteString(note(deployHelp, m.cursor, m.width))
 
-	b.WriteString("\n" + helpStyle.Render("  enter toggle · esc back · `pusher dev` measures the difference") + "\n")
+	b.WriteString("\n" + helpStyle.Render("  "+fit("enter toggle · esc back · `pusher dev` measures the difference", textWidth(m.width))) + "\n")
 	return b.String()
 }
 

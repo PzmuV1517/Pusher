@@ -422,7 +422,7 @@ func (m *SettingsModel) viewBlob() string {
 	}
 
 	b.WriteString(m.renderList(len(items), func(i int) string {
-		return renderRow(i == m.cursor, items[i], values[i], 29)
+		return renderRow(i == m.cursor, items[i], values[i], 29, m.width)
 	}))
 
 	b.WriteString("\n")
@@ -473,7 +473,7 @@ func (m *SettingsModel) viewBlobRuns() string {
 		if i == 0 {
 			note = "newest"
 		}
-		return renderRow(i == m.cursor, t.OpMode, note, 29)
+		return renderRow(i == m.cursor, t.OpMode, note, 29, m.width)
 	}))
 
 	b.WriteString("\n" + helpStyle.Render("  enter opens the visualiser · r refresh · esc back") + "\n")

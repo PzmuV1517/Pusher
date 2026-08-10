@@ -9,8 +9,11 @@ import (
 	"github.com/andreibanu/pusher/internal/bench"
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/extreme"
+	"github.com/andreibanu/pusher/internal/feature"
 	"github.com/andreibanu/pusher/internal/gradle"
 	"github.com/andreibanu/pusher/internal/hotreload"
+	"github.com/andreibanu/pusher/internal/pathtrace"
+	"github.com/andreibanu/pusher/internal/visual"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -27,6 +30,10 @@ const (
 // by seconds.
 const benchRepeats = 3
 
+// devBanner is the warning above the tools.
+const devBanner = "These measure by deploying to the robot over and over. " +
+	"If you do not already know why you want this, you do not want it."
+
 var devItems = []string{
 	"Benchmark the deploy",
 	"Hot reload feasibility",
@@ -36,10 +43,43 @@ var devItems = []string{
 	"Collect the robot's own logs",
 	"Remove the hot reload proof",
 	"Exit",
+	"Preview the path visualiser",
 }
 
-// devHelpLines keeps the screen a fixed height as the cursor moves.
-const devHelpLines = 4
+// devVisualise is the position in devItems of the entry that only appears once
+// the visualiser has been turned on.
+const devVisualise = 8
+
+// devSections group the tools by what they are for. The numbers are positions
+// in devItems, so regrouping cannot change what an entry does.
+var devSections = []menuSection{
+	{"Measuring", []int{0, 4, 2, 1}},
+	{"Trying things out", []int{3, devVisualise, 6}},
+	{"When something went wrong", []int{5}},
+	{"", []int{7}},
+}
+
+func (m *devModel) layout() menuLayout {
+	return arrange(devSections, func(i int) bool {
+		return i != devVisualise || feature.Revealed()
+	})
+}
+
+// previewVisualiser draws a made up run and opens it.
+//
+// Nothing is read off the robot, so this works with no hub attached and no
+// recorded trace, which is the point of it.
+func (m *devModel) previewVisualiser() tea.Cmd {
+	out, err := visual.RenderDemo("", pathtrace.DefaultLimits())
+	if err != nil {
+		m.err = err
+		return nil
+	}
+
+	visual.Open(out)
+	m.status = "Opened a sample path: " + out
+	return nil
+}
 
 var devHelp = []string{
 	"Deploys the current build with different settings and times each one,\n" +
@@ -68,12 +108,17 @@ var devHelp = []string{
 	"Deletes the pushed dex and tells the robot controller to rescan.",
 
 	"",
+
+	"Draws a made up autonomous and opens it, so the visualiser can be\n" +
+		"looked at without a robot, a recorded run, or a blob-dev build.\n" +
+		"Nothing is read off the robot and nothing is deployed.",
 }
 
 type devModel struct {
 	screen devScreen
 	cursor int
 	height int
+	width  int
 
 	project string
 	apk     string
@@ -126,6 +171,7 @@ func devTick() tea.Cmd {
 func RunDev(projectRoot, apk string, splits []string) error {
 	m := &devModel{
 		height:  defaultHeight,
+		width:   defaultWidth,
 		project: projectRoot,
 		apk:     apk,
 		splits:  splits,
@@ -147,6 +193,7 @@ func (m *devModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
+		m.width = msg.Width
 		return m, nil
 
 	case devProgressMsg:
@@ -212,15 +259,17 @@ func (m *devModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "up", "k":
-		m.cursor = (m.cursor - 1 + len(devItems)) % len(devItems)
+		rows := m.layout().Rows
+		m.cursor = (m.cursor - 1 + len(rows)) % len(rows)
 	case "down", "j":
-		m.cursor = (m.cursor + 1) % len(devItems)
+		rows := m.layout().Rows
+		m.cursor = (m.cursor + 1) % len(rows)
 
 	case "enter", " ", "right", "l":
 		m.err = nil
 		m.status = ""
 
-		switch m.cursor {
+		switch m.layout().Rows[m.cursor] {
 		case 0:
 			return m, m.run(true, false)
 		case 1:
@@ -238,6 +287,8 @@ func (m *devModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 7:
 			m.quit = true
 			return m, tea.Quit
+		case devVisualise:
+			return m, m.previewVisualiser()
 		}
 	}
 
@@ -354,8 +405,10 @@ func (m *devModel) View() string {
 func (m *devModel) viewDevMain() string {
 	var b strings.Builder
 
-	b.WriteString("  " + errStyle.Render("These measure by deploying to the robot over and over.") + "\n")
-	b.WriteString("  " + helpStyle.Render("If you do not already know why you want this, you do not want it.") + "\n\n")
+	for _, line := range wrap(devBanner, textWidth(m.width)) {
+		b.WriteString("  " + errStyle.Render(line) + "\n")
+	}
+	b.WriteString("\n")
 
 	robot := "no robot connected"
 	if m.serial != "" {
@@ -372,17 +425,18 @@ func (m *devModel) viewDevMain() string {
 	}
 	fmt.Fprintf(&b, "  %s\n\n", helpStyle.Render(apk))
 
-	for i, item := range devItems {
+	list := m.layout()
+	for i, row := range list.Rows {
 		cursor := "  "
 		if i == m.cursor {
 			cursor = cursorOn.Render("> ")
 		}
-		fmt.Fprintf(&b, "%s%s\n", cursor, item)
+		b.WriteString(list.render(i, fmt.Sprintf("%s%s\n", cursor, devItems[row])))
 	}
 
-	b.WriteString(helpBlock(devHelp, m.cursor, devHelpLines))
+	b.WriteString(note(devHelp, list.Rows[m.cursor], m.width))
 
-	b.WriteString("\n" + helpStyle.Render("  enter run · up/down move · q quit") + "\n")
+	b.WriteString("\n" + helpStyle.Render("  "+fit("enter run · up/down move · q quit", textWidth(m.width))) + "\n")
 	return b.String()
 }
 
