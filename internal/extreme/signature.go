@@ -49,9 +49,7 @@ func signatureInputs(root string) []string {
 			return nil
 		}
 
-		name := info.Name()
-		if strings.HasSuffix(name, ".gradle") || name == "gradle.properties" ||
-			strings.HasSuffix(name, ".aar") || strings.HasSuffix(name, ".jar") {
+		if isBuildInput(info.Name()) {
 			paths = append(paths, path)
 		}
 		return nil
@@ -79,6 +77,26 @@ func signatureInputs(root string) []string {
 
 	sort.Strings(paths)
 	return paths
+}
+
+// isBuildInput reports whether a file decides what the APK contains.
+//
+// The Kotlin DSL names build files .gradle.kts, which does not end in .gradle.
+// Missing them meant a project on that DSL could change how the APK is built
+// and still be signed as unchanged, so the next deploy reloaded team code onto
+// a robot whose APK no longer matched: everything reports success and the robot
+// runs stale code. One converted module in an otherwise Groovy project is
+// enough for that.
+func isBuildInput(name string) bool {
+	switch {
+	case strings.HasSuffix(name, ".gradle"), strings.HasSuffix(name, ".gradle.kts"):
+		return true
+	case name == "gradle.properties":
+		return true
+	case strings.HasSuffix(name, ".aar"), strings.HasSuffix(name, ".jar"):
+		return true
+	}
+	return false
 }
 
 // Signature identifies everything the APK is built from except team code.

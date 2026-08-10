@@ -439,6 +439,63 @@ func TestTheSignatureIgnoresTeamCodeAndNoticesEverythingElse(t *testing.T) {
 
 // Build outputs are derived, and hashing them would make the signature change
 // on every build for the same reason the APK does.
+// The Kotlin DSL names build files .gradle.kts, which does not end in .gradle.
+// A project with one of those could change how the APK is built and still sign
+// as unchanged, so the next deploy reloaded team code onto a robot whose APK no
+// longer matched and reported success.
+func TestTheSignatureNoticesKotlinDSLBuildFiles(t *testing.T) {
+	root := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(root, Module), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A Groovy project with one converted module, which is enough.
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("build.gradle", "// root\n")
+	write(filepath.Join(Module, "build.gradle.kts"), `android { }`)
+
+	before, err := Signature(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	write(filepath.Join(Module, "build.gradle.kts"), `android { buildTypes { } }`)
+
+	after, err := Signature(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if before == after {
+		t.Error("changing a .gradle.kts did not change the signature, so a deploy " +
+			"would reload onto an APK that no longer matches")
+	}
+}
+
+func TestBuildInputsCoverBothGradleDialects(t *testing.T) {
+	for _, name := range []string{
+		"build.gradle", "build.gradle.kts", "settings.gradle.kts",
+		"gradle.properties", "blob-dev.aar", "something.jar",
+	} {
+		if !isBuildInput(name) {
+			t.Errorf("%s should be part of the signature", name)
+		}
+	}
+
+	for _, name := range []string{
+		"Robot.java", "README.md", "gradlew", "config.xml", "notes.kts",
+	} {
+		if isBuildInput(name) {
+			t.Errorf("%s should not be part of the signature", name)
+		}
+	}
+}
+
 func TestTheSignatureSkipsBuildOutput(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, Module, "build", "intermediates"), 0o755); err != nil {
