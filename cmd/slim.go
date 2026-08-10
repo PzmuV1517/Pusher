@@ -51,16 +51,17 @@ func warnSlimUnsupported(root string) error {
 	}
 
 	fmt.Printf("\n[!] %v\n", reason)
-	fmt.Println("    Nothing would be patched, and the deploy would package")
-	fmt.Println("    everything it always did.")
+	fmt.Println("    Nothing gets patched. Every deploy would go on packaging")
+	fmt.Println("    every architecture, at full size, while appearing to have")
+	fmt.Println("    been slimmed.")
 
 	if ignoreWarnings {
-		fmt.Println("    Carrying on because --ignore-warnings was passed.")
+		fmt.Println("    Carrying on anyway because --ignore-warnings was passed.")
 		return nil
 	}
 
-	return fmt.Errorf("stopped. Pass --ignore-warnings to do it anyway, " +
-		"or turn slim off in `pusher settings`")
+	return fmt.Errorf("stopped, because carrying on would achieve nothing.\n" +
+		"    Turn slim off in `pusher settings`, or pass --ignore-warnings")
 }
 
 func runSlim(cmd *cobra.Command, args []string) error {

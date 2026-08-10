@@ -32,6 +32,13 @@ type Project struct {
 // `jniLibs.useLegacyPackaging true`. The Kotlin DSL writes both differently, so
 // the patterns match nothing, and a deploy would go on packaging everything it
 // always did while reporting that it had been slimmed.
+//
+// This is settled rather than pending. Pusher Extreme learned the Kotlin DSL
+// because one generated block covers every project; slim instead edits lines a
+// team wrote themselves, in whichever of several shapes they wrote them, and
+// replacing a `+=` on a collection is not the same edit as replacing a literal.
+// Guessing at that on a repository nobody can test against is how a deploy ends
+// up silently packaging everything.
 func Supported(root string) error {
 	if _, err := os.Stat(filepath.Join(root, "build.common.gradle")); err == nil {
 		return nil
@@ -43,8 +50,9 @@ func Supported(root string) error {
 		filepath.Join(root, "TeamCode", "build.gradle.kts"),
 	} {
 		if _, err := os.Stat(name); err == nil {
-			return fmt.Errorf("this project is configured with the Kotlin DSL, " +
-				"which `pusher slim` cannot edit")
+			return fmt.Errorf("`pusher slim` WILL NOT WORK on this project: it is " +
+				"configured with the Kotlin DSL, which slim does not support and is " +
+				"not going to")
 		}
 	}
 

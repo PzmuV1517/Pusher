@@ -531,7 +531,7 @@ func (m *SettingsModel) toggleAutoSlim() {
 	// next deploy that nothing was slimmed.
 	if enabling {
 		if reason := ftcproject.Supported(m.projectRoot()); reason != nil {
-			m.err = fmt.Errorf("%v, so this would do nothing", reason)
+			m.err = reason
 			return
 		}
 	}

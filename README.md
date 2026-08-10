@@ -229,6 +229,13 @@ which is about 10 MB of a stock FTC APK. It asks the connected hub which
 architecture it runs and refuses to guess, so connect the robot first. Files it
 edits are backed up next to themselves; `pusher slim --undo` restores them.
 
+It needs a Groovy `build.common.gradle`. On a project configured with the Kotlin
+DSL it will not work, and is not going to: the lines it patches are written by
+your team in whichever of several shapes you wrote them, so it would sit there
+matching nothing while every deploy went on packaging everything. Pusher stops
+rather than pretend. Pusher Extreme is different and does support the Kotlin
+DSL, because it writes one block of its own rather than editing yours.
+
 ## Deploy speed
 
 A deploy is two halves that behave differently: getting the bytes to the robot,
