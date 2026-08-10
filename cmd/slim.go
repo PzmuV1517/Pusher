@@ -40,7 +40,38 @@ func init() {
 	slimCmd.Flags().BoolVar(&slimStoreLibs, "store-libs", false, "Store native libraries uncompressed so the install does not extract them")
 }
 
+// warnSlimUnsupported stops a command that would appear to slim and do nothing.
+//
+// Reporting a slimmed deploy that packaged everything is worse than refusing:
+// the whole point is the size of what gets transferred, and nobody checks.
+func warnSlimUnsupported(root string) error {
+	reason := ftcproject.Supported(root)
+	if reason == nil {
+		return nil
+	}
+
+	fmt.Printf("\n[!] %v\n", reason)
+	fmt.Println("    Nothing would be patched, and the deploy would package")
+	fmt.Println("    everything it always did.")
+
+	if ignoreWarnings {
+		fmt.Println("    Carrying on because --ignore-warnings was passed.")
+		return nil
+	}
+
+	return fmt.Errorf("stopped. Pass --ignore-warnings to do it anyway, " +
+		"or turn slim off in `pusher settings`")
+}
+
 func runSlim(cmd *cobra.Command, args []string) error {
+	wrapper, err := gradle.DetectWrapper()
+	if err != nil {
+		return fmt.Errorf("failed to detect Gradle wrapper: %w", err)
+	}
+	if err := warnSlimUnsupported(gradle.ProjectDir(wrapper)); err != nil {
+		return err
+	}
+
 	project, err := detectFTCProject()
 	if err != nil {
 		return err

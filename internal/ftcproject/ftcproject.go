@@ -26,6 +26,32 @@ type Project struct {
 	TeamCodeGradle string
 }
 
+// Supported reports why this project cannot be slimmed, or nil when it can.
+//
+// Every patch slim makes is Groovy: `abiFilters "x"` and
+// `jniLibs.useLegacyPackaging true`. The Kotlin DSL writes both differently, so
+// the patterns match nothing, and a deploy would go on packaging everything it
+// always did while reporting that it had been slimmed.
+func Supported(root string) error {
+	if _, err := os.Stat(filepath.Join(root, "build.common.gradle")); err == nil {
+		return nil
+	}
+
+	for _, name := range []string{
+		filepath.Join(root, "build.common.gradle.kts"),
+		filepath.Join(root, "build.gradle.kts"),
+		filepath.Join(root, "TeamCode", "build.gradle.kts"),
+	} {
+		if _, err := os.Stat(name); err == nil {
+			return fmt.Errorf("this project is configured with the Kotlin DSL, " +
+				"which `pusher slim` cannot edit")
+		}
+	}
+
+	return fmt.Errorf("no build.common.gradle here, so there is nothing for " +
+		"`pusher slim` to edit")
+}
+
 // Detect confirms a directory is an FTC project and locates its gradle files.
 func Detect(root string) (*Project, error) {
 	abs, err := filepath.Abs(root)

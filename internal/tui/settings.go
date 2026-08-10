@@ -8,6 +8,7 @@ import (
 
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/feature"
+	"github.com/andreibanu/pusher/internal/ftcproject"
 	"github.com/andreibanu/pusher/internal/pathtrace"
 	"github.com/andreibanu/pusher/internal/wifi"
 	tea "github.com/charmbracelet/bubbletea"
@@ -525,6 +526,15 @@ func (m *SettingsModel) updateThreads(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *SettingsModel) toggleAutoSlim() {
 	enabling := !config.GetAutoSlim()
+
+	// Said before it is turned on, since the alternative is finding out at the
+	// next deploy that nothing was slimmed.
+	if enabling {
+		if reason := ftcproject.Supported(m.projectRoot()); reason != nil {
+			m.err = fmt.Errorf("%v, so this would do nothing", reason)
+			return
+		}
+	}
 
 	if err := config.SetAutoSlim(enabling); err != nil {
 		m.err = err

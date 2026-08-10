@@ -13,6 +13,10 @@ import (
 var (
 	versionFlag bool
 	appVersion  string
+
+	// ignoreWarnings carries on past a check that would otherwise stop the
+	// command. Persistent, so `pusher` and `pusher slim` both take it.
+	ignoreWarnings bool
 )
 
 var rootCmd = &cobra.Command{
@@ -49,6 +53,8 @@ func Execute(version string) {
 func init() {
 
 	rootCmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "Show version information")
+	rootCmd.PersistentFlags().BoolVar(&ignoreWarnings, "ignore-warnings", false,
+		"Carry on past a check that would otherwise stop the command")
 
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(connectCmd)

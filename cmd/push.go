@@ -42,6 +42,14 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("adb not found - please install Android SDK Platform-Tools")
 	}
 
+	// Before the build, the Wi-Fi hop and the install, so a deploy that would
+	// have silently skipped slimming stops while stopping is still cheap.
+	if config.GetAutoSlim() {
+		if err := warnSlimUnsupported(gradle.ProjectDir(gradlePath)); err != nil {
+			return err
+		}
+	}
+
 	if config.GetPreferUSB() {
 		if device, ok := adb.FindUSBDevice(); ok {
 			fmt.Printf("[OK] Hub attached over USB: %s\n", device.Label())
