@@ -442,6 +442,41 @@ pace is set by the radio, which takes about four seconds per scan and refuses
 another for ten. Linux asks nmcli for a rescan; Windows reads the list netsh
 keeps. Set `PUSHER_NO_SCAN=1` to turn it off everywhere.
 
+## What pusher sends
+
+Once a day, pusher reports that it ran. Three things: a random ID it generated
+for itself the first time it started, the pusher version, and your operating
+system and CPU (`darwin/arm64`). That is the whole payload, and there is a test
+that fails if anything else is ever added to it.
+
+It does not send your team number, your project, your file paths, your robot
+configuration, your Wi-Fi names, your username, your hostname, or your IP beyond
+the fact that a connection was made. The ID is random, not derived from your
+hardware, so it identifies a copy of pusher and nothing else. The server hashes
+it with a secret before storing it, so even the database cannot be matched back
+to the ID sitting in your config file.
+
+It exists to answer one question: how many teams use this, and which versions
+are they on. That is what makes it safe to change something, rather than
+guessing about who would notice.
+
+The request runs in the background, never blocks a deploy and never fails one.
+If it cannot reach the server it gives up in three seconds and says nothing.
+
+To turn it off:
+
+```bash
+PUSHER_NO_TELEMETRY=1 pusher        # once
+pusher settings  →  Count this device  # for good
+```
+
+With it off, nothing is sent and no ID is generated at all. Builds with no
+counter configured send nothing regardless of the setting; `pusher settings`
+says "not set up" when that is the case.
+
+The server is a Cloudflare Worker in [`worker/`](worker/), about a hundred lines
+of it, including what it stores and what it refuses.
+
 ## Credits
 
 Made with love by **Andrei "PzmuV1517" Banu**

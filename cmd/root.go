@@ -3,10 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/feature"
 	"github.com/andreibanu/pusher/internal/selfupdate"
+	"github.com/andreibanu/pusher/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
@@ -45,10 +47,22 @@ func Execute(version string) {
 
 	visualiseCmd.Hidden = !feature.Revealed()
 
-	if err := rootCmd.Execute(); err != nil {
+	// Started here so the request overlaps the command rather than following
+	// it, and finished after it so a short command still gets counted. Neither
+	// half can fail the run.
+	counted := telemetry.Start(version)
+
+	err := rootCmd.Execute()
+	counted.Finish(pingWait)
+
+	if err != nil {
 		os.Exit(1)
 	}
 }
+
+// pingWait is how long the device count may hold up an exit. Most commands
+// outlast the request several times over, so this is usually not a wait at all.
+const pingWait = 1500 * time.Millisecond
 
 func init() {
 

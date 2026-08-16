@@ -10,6 +10,7 @@ import (
 	"github.com/andreibanu/pusher/internal/feature"
 	"github.com/andreibanu/pusher/internal/ftcproject"
 	"github.com/andreibanu/pusher/internal/pathtrace"
+	"github.com/andreibanu/pusher/internal/telemetry"
 	"github.com/andreibanu/pusher/internal/wifi"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -159,6 +160,7 @@ var mainItems = []string{
 	"Dashboard tuning check",
 	"Update pusher",
 	"Exit",
+	"Count this device",
 }
 
 // Update satisfies tea.Model.
@@ -251,7 +253,7 @@ var mainSections = []menuSection{
 	{"Building and deploying", []int{6, 4, 5, 8}},
 	{"Reloading instead of installing", []int{9, 10}},
 	{"Extras", []int{optionalRow}},
-	{"Pusher itself", []int{11}},
+	{"Pusher itself", []int{11, 13}},
 	{"", []int{12}},
 }
 
@@ -343,6 +345,8 @@ func (m *SettingsModel) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 12:
 			m.quit = true
 			return m, tea.Quit
+		case 13:
+			m.toggleTelemetry()
 		}
 	}
 
@@ -713,6 +717,40 @@ func (m *SettingsModel) toggleDashWatch() {
 	m.status = "Off: `pusher dash diff` still compares on demand"
 }
 
+func (m *SettingsModel) toggleTelemetry() {
+	if !telemetry.Configured() {
+		m.err = nil
+		m.status = "This build has no counter to talk to, so nothing is sent"
+		return
+	}
+
+	enabling := !config.GetTelemetry()
+
+	if err := config.SetTelemetry(enabling); err != nil {
+		m.err = err
+		return
+	}
+
+	m.err = nil
+	if enabling {
+		m.status = "On: a random ID, the version and your OS, once a day"
+		return
+	}
+	m.status = "Off: pusher sends nothing at all"
+}
+
+// telemetryLabel says what is actually happening, which is not always what the
+// setting says: an unconfigured build sends nothing however this is set.
+func (m *SettingsModel) telemetryLabel() string {
+	if !telemetry.Configured() {
+		return "not set up"
+	}
+	if !telemetry.Enabled() && config.GetTelemetry() {
+		return "off (PUSHER_NO_TELEMETRY)"
+	}
+	return onOff(config.GetTelemetry())
+}
+
 func (m *SettingsModel) viewMain() string {
 	values := []string{
 		m.defaultProfileLabel(),
@@ -728,6 +766,7 @@ func (m *SettingsModel) viewMain() string {
 		onOff(config.GetDashWatch()),
 		m.updateLabel(),
 		"",
+		m.telemetryLabel(),
 	}
 
 	list := m.layout()
