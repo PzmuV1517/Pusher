@@ -405,6 +405,43 @@ connecting.
 If the network is ever guessed wrong on any platform, pin it in
 `pusher settings` → Home Wi-Fi network, which always wins.
 
+### Looking for the hub
+
+`Could not find network 14270-RC` does not mean the hub is off. It means the
+network was not in the driver's list of what is nearby at the moment the join
+asked, which is the normal state for a hub that was switched on a minute ago:
+the list is only refreshed when something scans, and nothing had.
+
+So pusher scans. It starts looking for the hub's network in the background
+before the build begins, which costs nothing because the build was going to take
+that long anyway, and by the time the join happens the hub is in the list. It
+stops scanning before the join and stays stopped for the deploy, because a scan
+hops the radio across every channel and would cost the transfer several seconds
+of throughput.
+
+The payoff is that a failed join now comes with the half the OS cannot tell you:
+
+```
+[!] 14270-RC is not broadcasting.
+    Trying anyway, but check the hub is powered on and nearby.
+Error: failed to join "14270-RC": Could not find network 14270-RC.
+    pusher never saw that network while it was looking, so the hub is
+    probably switched off, still starting up, or out of range
+```
+
+and when the hub *was* seen, pusher says so and retries the join once, which is
+usually all a hub that is sitting right there needs.
+
+`pusher doctor` answers the same question on demand, under **Robot Wi-Fi**.
+
+On macOS this works despite Location Services, which is the part worth knowing:
+the name filter is applied inside the OS, before the redaction that hides
+network names from command-line tools. Pusher never learns the names of the
+networks around you, only whether the one it asked about is among them. The
+pace is set by the radio, which takes about four seconds per scan and refuses
+another for ten. Linux asks nmcli for a rescan; Windows reads the list netsh
+keeps. Set `PUSHER_NO_SCAN=1` to turn it off everywhere.
+
 ## Credits
 
 Made with love by **Andrei "PzmuV1517" Banu**

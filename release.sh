@@ -21,21 +21,28 @@ mkdir -p ${OUTPUT_DIR}
 echo "Building release binaries for version ${VERSION}..."
 echo ""
 
+# Both macOS builds go through cgo, because looking for the robot's Wi-Fi means
+# calling CoreWLAN. Without it the binary still works, it just cannot tell you
+# whether the hub is broadcasting until the join has already failed. Cross-
+# compiling turns cgo off unless it is asked for, hence the explicit clang.
+
 # macOS Intel
 echo "[*] Building for macOS (Intel)..."
-GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o ${OUTPUT_DIR}/pusher-darwin-amd64
+CGO_ENABLED=1 CC="clang -arch x86_64" GOOS=darwin GOARCH=amd64 \
+  go build -ldflags="${LDFLAGS}" -o ${OUTPUT_DIR}/pusher-darwin-amd64
 
 # macOS Apple Silicon
 echo "[*] Building for macOS (Apple Silicon)..."
-GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o ${OUTPUT_DIR}/pusher-darwin-arm64
+CGO_ENABLED=1 CC="clang -arch arm64" GOOS=darwin GOARCH=arm64 \
+  go build -ldflags="${LDFLAGS}" -o ${OUTPUT_DIR}/pusher-darwin-arm64
 
 # Linux
 echo "[*] Building for Linux..."
-GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o ${OUTPUT_DIR}/pusher-linux-amd64
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o ${OUTPUT_DIR}/pusher-linux-amd64
 
 # Windows
 echo "[*] Building for Windows..."
-GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o ${OUTPUT_DIR}/pusher-windows-amd64.exe
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o ${OUTPUT_DIR}/pusher-windows-amd64.exe
 
 # Create universal macOS binary
 echo "[*] Creating universal macOS binary..."

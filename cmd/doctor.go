@@ -33,6 +33,8 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	locationOK := reportWiFi()
 	fmt.Println()
+	reportHubAP()
+	fmt.Println()
 	reportADB()
 	fmt.Println()
 	reportProject()
@@ -119,6 +121,46 @@ func reportWiFi() bool {
 	}
 
 	return true
+}
+
+// reportHubAP answers the question a failed join leaves open: was the hub even
+// broadcasting? Its own section because the Wi-Fi one gives up early on a macOS
+// that will not name the current network, which is every macOS since 15.
+func reportHubAP() {
+	fmt.Println("Robot Wi-Fi")
+	fmt.Println("─────────────────────────────────────────")
+
+	profile, err := config.GetDefaultProfile()
+	if err != nil || profile.SSID == "" {
+		fmt.Println("  Network            : none configured")
+		fmt.Println("  Add one with 'pusher settings' -> Robot profiles.")
+		return
+	}
+
+	fmt.Printf("  Network            : %s\n", profile.SSID)
+
+	if !wifi.ScanningEnabled() {
+		fmt.Println("  Broadcasting       : cannot look")
+		fmt.Println()
+		for _, line := range strings.Split(wifi.ScanNote, "\n") {
+			fmt.Println("  " + line)
+		}
+		return
+	}
+
+	// The label goes out before the scan, which takes a few seconds, so the
+	// pause reads as pusher working rather than pusher hanging.
+	fmt.Print("  Broadcasting       : ")
+
+	switch present, err := wifi.NewManager().Visible(profile.SSID); {
+	case err != nil:
+		fmt.Printf("could not tell: %v\n", err)
+	case present:
+		fmt.Println("yes, in range now")
+	default:
+		fmt.Println("no")
+		fmt.Println("  The hub is switched off, still starting up, or out of range.")
+	}
 }
 
 func reportADB() {

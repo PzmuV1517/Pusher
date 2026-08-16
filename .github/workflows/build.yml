@@ -55,3 +55,9 @@ jobs:
           GOOS=linux GOARCH=amd64 go build -o /dev/null
           GOOS=darwin GOARCH=arm64 go build -o /dev/null
           GOOS=windows GOARCH=amd64 go build -o /dev/null
+
+      # Scanning for the robot's Wi-Fi goes through CoreWLAN, so macOS has a
+      # second build with a fallback for when cgo is off. Nothing else compiles
+      # that file.
+      - name: Build macOS without cgo
+        run: CGO_ENABLED=0 go build -o /dev/null
