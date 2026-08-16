@@ -137,6 +137,49 @@ func parseNmcliRadio(output string) bool {
 	return strings.EqualFold(strings.TrimSpace(output), "enabled")
 }
 
+// nmcliSawSSID reports whether a scan listed a network.
+//
+// One SSID per line, and an empty line for every hidden network, so the exact
+// match matters: a hidden network would otherwise match an empty search.
+func nmcliSawSSID(output, ssid string) bool {
+	if ssid == "" {
+		return false
+	}
+
+	for _, line := range strings.Split(output, "\n") {
+		fields := splitTerse(strings.TrimRight(line, "\r"))
+		if len(fields) > 0 && fields[0] == ssid {
+			return true
+		}
+	}
+
+	return false
+}
+
+// netshSawSSID reports whether a scan listed a network.
+//
+// The lines are numbered, as in "SSID 3 : Robot", so the name is whatever
+// follows the first colon.
+func netshSawSSID(output, ssid string) bool {
+	if ssid == "" {
+		return false
+	}
+
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(strings.TrimRight(line, "\r"))
+		if !strings.HasPrefix(trimmed, "SSID ") {
+			continue
+		}
+
+		_, value, found := strings.Cut(trimmed, ":")
+		if found && strings.TrimSpace(value) == ssid {
+			return true
+		}
+	}
+
+	return false
+}
+
 func netshField(output, key string) string {
 	for _, line := range strings.Split(output, "\n") {
 		name, value, found := strings.Cut(line, ":")

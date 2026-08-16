@@ -276,14 +276,20 @@ func measureSplit(serial, apk string, splits []string) Run {
 
 // olderThanGradle reports whether the APK predates any gradle file in the
 // project, which means it was built under different settings.
+//
+// Both DSLs, since .gradle.kts does not match *.gradle and a measurement taken
+// against an APK that no longer matches the build files is not a measurement of
+// anything.
 func olderThanGradle(apkPath string, built time.Time) bool {
 	dir := filepath.Dir(apkPath)
 
 	for i := 0; i < 6 && dir != "/" && dir != "."; i++ {
-		matches, _ := filepath.Glob(filepath.Join(dir, "*.gradle"))
-		for _, gradleFile := range matches {
-			if info, err := os.Stat(gradleFile); err == nil && info.ModTime().After(built) {
-				return true
+		for _, pattern := range []string{"*.gradle", "*.gradle.kts"} {
+			matches, _ := filepath.Glob(filepath.Join(dir, pattern))
+			for _, gradleFile := range matches {
+				if info, err := os.Stat(gradleFile); err == nil && info.ModTime().After(built) {
+					return true
+				}
 			}
 		}
 		dir = filepath.Dir(dir)

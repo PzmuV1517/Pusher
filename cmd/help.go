@@ -45,6 +45,7 @@ func runHelp(cmd *cobra.Command, args []string) {
 	fmt.Println("  pusher settings       Robot profiles and preferences (alias: config)")
 	fmt.Println("  pusher slim           Shrink the APK so deploys transfer less")
 	fmt.Println("    pusher slim --undo       Put the gradle files back")
+	fmt.Println("  --ignore-warnings     Carry on past a check that would stop a command")
 	fmt.Println("  pusher hwconfig       Hardware config menu and editor (alias: hw)")
 	fmt.Println("    pusher hwconfig list     Print what the robot and the project have")
 	fmt.Println("    pusher hwconfig pull     Copy the robot's configs into your project")

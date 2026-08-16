@@ -51,7 +51,11 @@ func RenderLocal(local, projectRoot, out string, lim pathtrace.Limits) (string, 
 	if err != nil {
 		return "", err
 	}
+	return RenderTrace(trace, projectRoot, out, lim)
+}
 
+// RenderTrace renders a trace already in memory.
+func RenderTrace(trace *pathtrace.Trace, projectRoot, out string, lim pathtrace.Limits) (string, error) {
 	if projectRoot == "" {
 		projectRoot, _ = os.Getwd()
 	}
@@ -65,6 +69,12 @@ func RenderLocal(local, projectRoot, out string, lim pathtrace.Limits) (string, 
 		return "", err
 	}
 	return out, nil
+}
+
+// RenderDemo draws a made up run, so the visualiser can be looked at without a
+// robot and without a recorded trace.
+func RenderDemo(out string, lim pathtrace.Limits) (string, error) {
+	return RenderTrace(pathtrace.Demo(), "", out, lim)
 }
 
 // Summary is the one-line description of a rendered run.

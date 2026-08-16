@@ -42,6 +42,14 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("adb not found - please install Android SDK Platform-Tools")
 	}
 
+	// Before the build, the Wi-Fi hop and the install, so a deploy that would
+	// have silently skipped slimming stops while stopping is still cheap.
+	if config.GetAutoSlim() {
+		if err := warnSlimUnsupported(gradle.ProjectDir(gradlePath)); err != nil {
+			return err
+		}
+	}
+
 	if config.GetPreferUSB() {
 		if device, ok := adb.FindUSBDevice(); ok {
 			fmt.Printf("[OK] Hub attached over USB: %s\n", device.Label())
@@ -78,6 +86,16 @@ func pushOverWiFi(gradlePath string) error {
 
 	switchBack := config.GetSwitchBack()
 
+	// Started before the build, not before the join: a scan is slow, and one
+	// that runs alongside a build costs the deploy nothing, whereas one that
+	// runs at the join costs it every second. By the time the build is done the
+	// hub is in the list of nearby networks that the join consults.
+	var watcher *wifi.Watcher
+	if !onRobot {
+		watcher = wifiMgr.Watch(profile.SSID)
+		defer watcher.Stop()
+	}
+
 	home, err := resolveHomeNetwork(wifiMgr, onRobot, switchBack, profile.SSID)
 	if err != nil {
 		return err
@@ -99,9 +117,9 @@ func pushOverWiFi(gradlePath string) error {
 
 	if !onRobot {
 		fmt.Printf("\n[>] Joining robot Wi-Fi: %s\n", profile.SSID)
-		ip, err := wifiMgr.JoinAndWait(profile.SSID, profile.Password, wifi.RobotSubnet, joinTimeout)
+		ip, err := joinRobot(wifiMgr, watcher, profile)
 		if err != nil {
-			return fmt.Errorf("failed to join %q: %w", profile.SSID, err)
+			return err
 		}
 		fmt.Printf("[OK] On the robot network (%s)\n", ip)
 	} else {

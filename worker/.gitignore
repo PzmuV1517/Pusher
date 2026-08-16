@@ -1,0 +1,6 @@
+# wrangler's local state: which account it is logged into, and its caches.
+.wrangler/
+
+# Nothing here has dependencies; npx fetches wrangler on demand. This is only
+# in case somebody runs `npm install` out of habit.
+node_modules/

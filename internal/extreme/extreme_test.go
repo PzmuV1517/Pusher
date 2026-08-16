@@ -439,6 +439,174 @@ func TestTheSignatureIgnoresTeamCodeAndNoticesEverythingElse(t *testing.T) {
 
 // Build outputs are derived, and hashing them would make the signature change
 // on every build for the same reason the APK does.
+// The Kotlin DSL names build files .gradle.kts, which does not end in .gradle.
+// A project with one of those could change how the APK is built and still sign
+// as unchanged, so the next deploy reloaded team code onto a robot whose APK no
+// longer matched and reported success.
+func TestTheSignatureNoticesKotlinDSLBuildFiles(t *testing.T) {
+	root := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(root, Module), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A Groovy project with one converted module, which is enough.
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("build.gradle", "// root\n")
+	write(filepath.Join(Module, "build.gradle.kts"), `android { }`)
+
+	before, err := Signature(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	write(filepath.Join(Module, "build.gradle.kts"), `android { buildTypes { } }`)
+
+	after, err := Signature(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if before == after {
+		t.Error("changing a .gradle.kts did not change the signature, so a deploy " +
+			"would reload onto an APK that no longer matches")
+	}
+}
+
+// A version catalog names the version of every library that goes into the APK.
+// Changing one changes the build, and a project keeping its SDK version there
+// was signing that file as if it were documentation.
+func TestTheSignatureNoticesAVersionCatalog(t *testing.T) {
+	root := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(root, "gradle"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "build.gradle.kts"), []byte("// root"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	catalog := filepath.Join(root, "gradle", "libs.versions.toml")
+	if err := os.WriteFile(catalog, []byte("[versions]\nftc = \"11.1.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := Signature(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(catalog, []byte("[versions]\nftc = \"11.0.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := Signature(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if before == after {
+		t.Error("changing the SDK version in a catalog did not change the signature")
+	}
+}
+
+func TestBuildInputsCoverBothGradleDialects(t *testing.T) {
+	for _, name := range []string{
+		"build.gradle", "build.gradle.kts", "settings.gradle.kts",
+		"gradle.properties", "libs.versions.toml", "blob-dev.aar", "something.jar",
+	} {
+		if !isBuildInput(name) {
+			t.Errorf("%s should be part of the signature", name)
+		}
+	}
+
+	for _, name := range []string{
+		"Robot.java", "README.md", "gradlew", "config.xml", "notes.kts",
+	} {
+		if isBuildInput(name) {
+			t.Errorf("%s should not be part of the signature", name)
+		}
+	}
+}
+
+// Reloading compiles with javac. A Kotlin file is not compiled, not delivered,
+// and not in the APK either once team code is excluded, so setting this up on a
+// Kotlin project leaves a robot with almost nothing on it while every command
+// reports success. Measured on a real project: two of nine files would have
+// reloaded and seven would have vanished.
+func TestSetupRefusesWhatItCannotReload(t *testing.T) {
+	build := func(t *testing.T, gradleName string, sources ...string) string {
+		root := t.TempDir()
+
+		src := filepath.Join(root, SourceRoot, filepath.FromSlash(TeamPackage))
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range sources {
+			if err := os.WriteFile(filepath.Join(src, name), []byte("// x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		gradle := filepath.Join(root, Module, gradleName)
+		if err := os.WriteFile(gradle, []byte("android { }"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return root
+	}
+
+	t.Run("kotlin sources", func(t *testing.T) {
+		root := build(t, "build.gradle", "Robot.java", "Intake.kt")
+
+		err := Supported(root)
+		if err == nil {
+			t.Fatal("a project with Kotlin sources was accepted")
+		}
+		if !strings.Contains(err.Error(), "Kotlin") {
+			t.Errorf("the reason does not mention Kotlin: %v", err)
+		}
+
+		// And nothing was written on the way to finding out.
+		if err := Exclude(root); err == nil {
+			t.Error("Exclude went ahead anyway")
+		}
+		if Excluded(root) {
+			t.Error("Exclude left a block behind on a project it refused")
+		}
+	})
+
+	t.Run("kotlin dsl with java sources is supported", func(t *testing.T) {
+		root := build(t, "build.gradle.kts", "Robot.java")
+
+		if !KotlinDSL(root) {
+			t.Fatal("a build.gradle.kts module was not recognised")
+		}
+		if err := Supported(root); err != nil {
+			t.Errorf("a Kotlin DSL project with Java sources was refused: %v", err)
+		}
+	})
+
+	t.Run("kotlin dsl and kotlin sources is still refused", func(t *testing.T) {
+		root := build(t, "build.gradle.kts", "Robot.java", "Intake.kt")
+
+		if err := Supported(root); err == nil {
+			t.Error("Kotlin sources were accepted because the DSL now is")
+		}
+	})
+
+	t.Run("plain java project is fine", func(t *testing.T) {
+		root := build(t, "build.gradle", "Robot.java", "Auto.java")
+
+		if err := Supported(root); err != nil {
+			t.Errorf("an ordinary project was refused: %v", err)
+		}
+	})
+}
+
 func TestTheSignatureSkipsBuildOutput(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, Module, "build", "intermediates"), 0o755); err != nil {
@@ -551,6 +719,93 @@ func TestTheGradleBlockPinsAClassToItsDot(t *testing.T) {
 		"!path.startsWith('org/firstinspires/ftc/teamcode/tuning/')") {
 		t.Error("a package keep is not matched as a directory")
 	}
+}
+
+// The block has to be written in the dialect the module uses, and the two are
+// not interchangeable. Verified against a real Kotlin DSL project: the source
+// set went from 1 file to 0 with the block, and stayed at 1 when that file was
+// on the keep list.
+func TestTheBlockIsWrittenInTheModulesDialect(t *testing.T) {
+	build := func(t *testing.T, gradleName string) string {
+		root := t.TempDir()
+
+		src := filepath.Join(root, SourceRoot, filepath.FromSlash(TeamPackage), "hw")
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(src, "MyDriver.java"), []byte("// x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, Module, gradleName), []byte("android { }"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return root
+	}
+
+	keep := TeamPackage + "/hw/MyDriver"
+
+	t.Run("groovy", func(t *testing.T) {
+		root := build(t, "build.gradle")
+		if err := Exclude(root, keep); err != nil {
+			t.Fatal(err)
+		}
+
+		content := string(mustRead(t, GradleFile(root)))
+		for _, want := range []string{
+			"main {",
+			"def path = details.path",
+			"!details.directory",
+			"'" + TeamPackage + "/'",
+		} {
+			if !strings.Contains(content, want) {
+				t.Errorf("groovy block is missing %q:\n%s", want, content)
+			}
+		}
+		if strings.Contains(content, "getByName") {
+			t.Error("groovy block contains Kotlin DSL syntax")
+		}
+	})
+
+	t.Run("kotlin", func(t *testing.T) {
+		root := build(t, "build.gradle.kts")
+		if err := Exclude(root, keep); err != nil {
+			t.Fatal(err)
+		}
+
+		if !strings.HasSuffix(GradleFile(root), ".kts") {
+			t.Fatal("the block went into the wrong file")
+		}
+
+		content := string(mustRead(t, GradleFile(root)))
+		for _, want := range []string{
+			`getByName("main")`,
+			// The Kotlin DSL exposes the newer AndroidSourceDirectorySet, which
+			// has no exclude. Without this cast the build file does not compile.
+			"com.android.build.gradle.api.AndroidSourceDirectorySet",
+			"val path = details.path",
+			"!details.isDirectory",
+			`"` + TeamPackage + `/"`,
+			`!path.startsWith("` + keep + `.")`,
+		} {
+			if !strings.Contains(content, want) {
+				t.Errorf("kotlin block is missing %q:\n%s", want, content)
+			}
+		}
+		if strings.Contains(content, "def path") || strings.Contains(content, "'"+TeamPackage) {
+			t.Error("kotlin block contains Groovy syntax")
+		}
+
+		// And it still reads back, since the reload excludes what the block kept.
+		if got := Kept(root); len(got) != 1 || got[0] != keep {
+			t.Errorf("Kept read back %v", got)
+		}
+		if !Excluded(root) {
+			t.Error("Excluded does not see the block in a .kts file")
+		}
+		if err := Include(root); err != nil || Excluded(root) {
+			t.Errorf("Include did not remove the block: %v", err)
+		}
+	})
 }
 
 // Excluding a directory prunes the subtree before any file under it is seen,

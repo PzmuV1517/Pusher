@@ -93,6 +93,7 @@ func Initialize() error {
 	viper.SetDefault("store_libs", false)
 	viper.SetDefault("split_install", false)
 	viper.SetDefault("extreme", false)
+	viper.SetDefault("telemetry", true)
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 
@@ -342,6 +343,39 @@ func GetInstallKey() string {
 // SetInstallKey records this install's key.
 func SetInstallKey(key string) error {
 	viper.Set("install_key", key)
+	return viper.WriteConfig()
+}
+
+// GetDeviceID returns this device's random identifier, empty until first use.
+func GetDeviceID() string {
+	return viper.GetString("device_id")
+}
+
+// SetDeviceID records this device's random identifier.
+func SetDeviceID(id string) error {
+	viper.Set("device_id", id)
+	return viper.WriteConfig()
+}
+
+// GetTelemetry reports whether this device may be counted.
+func GetTelemetry() bool {
+	return viper.GetBool("telemetry")
+}
+
+// SetTelemetry turns the device count on or off.
+func SetTelemetry(enabled bool) error {
+	viper.Set("telemetry", enabled)
+	return viper.WriteConfig()
+}
+
+// GetLastPing is when this device was last counted, as RFC 3339.
+func GetLastPing() string {
+	return viper.GetString("last_ping")
+}
+
+// SetLastPing records when this device was counted.
+func SetLastPing(when string) error {
+	viper.Set("last_ping", when)
 	return viper.WriteConfig()
 }
 

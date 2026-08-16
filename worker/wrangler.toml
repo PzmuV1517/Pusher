@@ -1,0 +1,15 @@
+name = "pusher-count"
+main = "src/index.js"
+compatibility_date = "2026-08-14"
+
+# Nothing here is secret. PEPPER and STATS_TOKEN are set with
+# `wrangler secret put`, which keeps them out of the repository.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pusher-devices"
+# Filled in by `wrangler d1 create pusher-devices`. See README.md.
+database_id = "c831f600-76ac-4517-a834-fec7857d4023"
+
+[observability]
+enabled = true

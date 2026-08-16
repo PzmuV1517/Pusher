@@ -47,6 +47,11 @@ func runConnect(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("no robot profile configured: %w\n\nRun 'pusher settings' to add one", err)
 		}
 
+		// Started before the questions below, so the scan overlaps them rather
+		// than following them.
+		watcher := wifiMgr.Watch(profile.SSID)
+		defer watcher.Stop()
+
 		ssid, ssidErr := wifiMgr.CurrentSSID()
 		switch {
 		case ssidErr == nil && ssid != "":
@@ -58,9 +63,9 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf("\n[>] Joining robot Wi-Fi: %s\n", profile.SSID)
-		ip, err := wifiMgr.JoinAndWait(profile.SSID, profile.Password, wifi.RobotSubnet, joinTimeout)
+		ip, err := joinRobot(wifiMgr, watcher, profile)
 		if err != nil {
-			return fmt.Errorf("failed to join %q: %w", profile.SSID, err)
+			return err
 		}
 		fmt.Printf("[OK] On the robot network (%s)\n", ip)
 	}

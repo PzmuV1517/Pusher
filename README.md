@@ -229,6 +229,13 @@ which is about 10 MB of a stock FTC APK. It asks the connected hub which
 architecture it runs and refuses to guess, so connect the robot first. Files it
 edits are backed up next to themselves; `pusher slim --undo` restores them.
 
+It needs a Groovy `build.common.gradle`. On a project configured with the Kotlin
+DSL it will not work, and is not going to: the lines it patches are written by
+your team in whichever of several shapes you wrote them, so it would sit there
+matching nothing while every deploy went on packaging everything. Pusher stops
+rather than pretend. Pusher Extreme is different and does support the Kotlin
+DSL, because it writes one block of its own rather than editing yours.
+
 ## Deploy speed
 
 A deploy is two halves that behave differently: getting the bytes to the robot,
@@ -397,6 +404,78 @@ connecting.
 
 If the network is ever guessed wrong on any platform, pin it in
 `pusher settings` → Home Wi-Fi network, which always wins.
+
+### Looking for the hub
+
+`Could not find network 14270-RC` does not mean the hub is off. It means the
+network was not in the driver's list of what is nearby at the moment the join
+asked, which is the normal state for a hub that was switched on a minute ago:
+the list is only refreshed when something scans, and nothing had.
+
+So pusher scans. It starts looking for the hub's network in the background
+before the build begins, which costs nothing because the build was going to take
+that long anyway, and by the time the join happens the hub is in the list. It
+stops scanning before the join and stays stopped for the deploy, because a scan
+hops the radio across every channel and would cost the transfer several seconds
+of throughput.
+
+The payoff is that a failed join now comes with the half the OS cannot tell you:
+
+```
+[!] 14270-RC is not broadcasting.
+    Trying anyway, but check the hub is powered on and nearby.
+Error: failed to join "14270-RC": Could not find network 14270-RC.
+    pusher never saw that network while it was looking, so the hub is
+    probably switched off, still starting up, or out of range
+```
+
+and when the hub *was* seen, pusher says so and retries the join once, which is
+usually all a hub that is sitting right there needs.
+
+`pusher doctor` answers the same question on demand, under **Robot Wi-Fi**.
+
+On macOS this works despite Location Services, which is the part worth knowing:
+the name filter is applied inside the OS, before the redaction that hides
+network names from command-line tools. Pusher never learns the names of the
+networks around you, only whether the one it asked about is among them. The
+pace is set by the radio, which takes about four seconds per scan and refuses
+another for ten. Linux asks nmcli for a rescan; Windows reads the list netsh
+keeps. Set `PUSHER_NO_SCAN=1` to turn it off everywhere.
+
+## What pusher sends
+
+Once a day, pusher reports that it ran. Three things: a random ID it generated
+for itself the first time it started, the pusher version, and your operating
+system and CPU (`darwin/arm64`). That is the whole payload, and there is a test
+that fails if anything else is ever added to it.
+
+It does not send your team number, your project, your file paths, your robot
+configuration, your Wi-Fi names, your username, your hostname, or your IP beyond
+the fact that a connection was made. The ID is random, not derived from your
+hardware, so it identifies a copy of pusher and nothing else. The server hashes
+it with a secret before storing it, so even the database cannot be matched back
+to the ID sitting in your config file.
+
+It exists to answer one question: how many teams use this, and which versions
+are they on. That is what makes it safe to change something, rather than
+guessing about who would notice.
+
+The request runs in the background, never blocks a deploy and never fails one.
+If it cannot reach the server it gives up in three seconds and says nothing.
+
+To turn it off:
+
+```bash
+PUSHER_NO_TELEMETRY=1 pusher        # once
+pusher settings  →  Count this device  # for good
+```
+
+With it off, nothing is sent and no ID is generated at all. Builds with no
+counter configured send nothing regardless of the setting; `pusher settings`
+says "not set up" when that is the case.
+
+The server is a Cloudflare Worker in [`worker/`](worker/), about a hundred lines
+of it, including what it stores and what it refuses.
 
 ## Credits
 
