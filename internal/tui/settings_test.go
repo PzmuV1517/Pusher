@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -401,3 +402,74 @@ func TestEveryMenuEntryIsInExactlyOneGroup(t *testing.T) {
 }
 
 func lineCount(s string) int { return strings.Count(s, "\n") }
+
+// renderedRows is how many rows a terminal of this width actually shows, which
+// is not how many newlines the string has: a line wider than the terminal is
+// wrapped by the terminal itself, onto rows the view never budgeted for.
+// Counting newlines misses exactly the bug this is here to catch.
+func renderedRows(view string, width int) int {
+	rows := 0
+	for _, line := range strings.Split(strings.TrimSuffix(view, "\n"), "\n") {
+		w := lipgloss.Width(line)
+		switch {
+		case w == 0:
+			rows++
+		default:
+			rows += (w + width - 1) / width
+		}
+	}
+	return rows
+}
+
+// fill() budgets exactly two lines for the status, so the message has to be one
+// line however narrow the terminal is. A wider one wraps onto a third, the view
+// comes out taller than the screen, and the frame before it is left on screen
+// underneath. Reported as toggling a setting breaking the menu and text writing
+// over other text.
+func TestAStatusNeverMakesTheViewTallerThanTheScreen(t *testing.T) {
+	// The longest things a toggle actually says.
+	messages := []string{
+		"On: every push says what dashboard tuning it overwrote",
+		"Off: `pusher dash diff` still compares on demand",
+		"On: a random ID, the version and your OS, once a day",
+		"This build has no counter to talk to, so nothing is sent",
+		"`pusher slim` WILL NOT WORK on this project: it is configured with the " +
+			"Kotlin DSL, which slim does not support and is not going to",
+	}
+
+	for _, height := range []int{16, 24, 40} {
+		for _, width := range []int{40, 60, 72, 80, 100, 120} {
+			for _, message := range messages {
+				m := &SettingsModel{height: height, width: width, confirmDeleteIndex: -1}
+				m.refreshProfiles()
+				m.screen = screenMain
+				m.status = message
+
+				if got := renderedRows(m.View(), width); got > height {
+					t.Errorf("status %q at %dx%d fills %d rows of %d",
+						message[:20]+"...", width, height, got, height)
+				}
+
+				m.status = ""
+				m.err = errors.New(message)
+
+				if got := renderedRows(m.View(), width); got > height {
+					t.Errorf("error %q at %dx%d fills %d rows of %d",
+						message[:20]+"...", width, height, got, height)
+				}
+			}
+		}
+	}
+}
+
+// Nothing is gained by cutting a message that already fits.
+func TestAShortStatusIsLeftAlone(t *testing.T) {
+	m := &SettingsModel{height: 24, width: 100, confirmDeleteIndex: -1}
+	m.refreshProfiles()
+	m.screen = screenMain
+	m.status = "Delta transfer updated"
+
+	if !strings.Contains(stripANSI(m.View()), "Delta transfer updated") {
+		t.Error("a status that fits was truncated anyway")
+	}
+}

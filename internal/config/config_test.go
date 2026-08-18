@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -170,5 +171,84 @@ func TestHasProfiles(t *testing.T) {
 
 	if !hasProfiles {
 		t.Error("Expected true when profiles exist")
+	}
+}
+
+// Save writes a hand-maintained list of keys while Config is a struct, and the
+// two drifted: dash_watch was added to the struct, given a getter and a setter,
+// and never written. The setting reported itself as changed and came back off
+// on the next read, because the file never held it.
+//
+// So this walks the struct rather than naming fields. A new setting that Save
+// forgets fails here instead of in somebody's menu.
+func TestEverySettingSurvivesASave(t *testing.T) {
+	cleanup := setupTest(t)
+	defer cleanup()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Every value is moved off whatever the default is, so a key that never
+	// reaches the file reads back as the default and fails to match.
+	want := map[string]any{}
+	fields := reflect.ValueOf(cfg).Elem()
+
+	for i := 0; i < fields.NumField(); i++ {
+		field := fields.Field(i)
+		name := fields.Type().Field(i).Tag.Get("mapstructure")
+
+		switch field.Kind() {
+		case reflect.Bool:
+			field.SetBool(!field.Bool())
+			want[name] = field.Bool()
+		case reflect.String:
+			field.SetString("saved-" + name)
+			want[name] = field.String()
+		case reflect.Int:
+			field.SetInt(field.Int() + 7)
+			want[name] = field.Int()
+		}
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the file back the way a later run would, rather than trusting what
+	// is still sitting in memory from the write.
+	viper.Reset()
+	if err := Initialize(); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := reflect.ValueOf(got).Elem()
+	for i := 0; i < reloaded.NumField(); i++ {
+		name := reloaded.Type().Field(i).Tag.Get("mapstructure")
+
+		expected, checked := want[name]
+		if !checked {
+			continue
+		}
+
+		var actual any
+		switch field := reloaded.Field(i); field.Kind() {
+		case reflect.Bool:
+			actual = field.Bool()
+		case reflect.String:
+			actual = field.String()
+		case reflect.Int:
+			actual = field.Int()
+		}
+
+		if actual != expected {
+			t.Errorf("%s came back as %v, want %v: Save does not write it", name, actual, expected)
+		}
 	}
 }

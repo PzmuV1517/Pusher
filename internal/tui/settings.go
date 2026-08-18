@@ -698,10 +698,16 @@ func (m *SettingsModel) View() string {
 		b.WriteString(m.viewExtreme())
 	}
 
+	// Fitted, because fill() budgets exactly two lines for this. A message
+	// wider than the terminal wraps onto a third, the view comes out taller
+	// than the screen, and the previous frame's bottom rows are left behind.
+	// That is what "toggling a setting breaks the menu" looks like.
+	room := textWidth(m.width) - 2
+
 	if m.err != nil {
-		b.WriteString("\n" + errStyle.Render("  ! "+m.err.Error()) + "\n")
+		b.WriteString("\n" + errStyle.Render("  ! "+fit(m.err.Error(), room)) + "\n")
 	} else if m.status != "" {
-		b.WriteString("\n" + okStyle.Render("  ✓ "+m.status) + "\n")
+		b.WriteString("\n" + okStyle.Render("  ✓ "+fit(m.status, room)) + "\n")
 	}
 
 	return b.String()

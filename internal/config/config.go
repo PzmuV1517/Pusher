@@ -93,6 +93,7 @@ func Initialize() error {
 	viper.SetDefault("store_libs", false)
 	viper.SetDefault("split_install", false)
 	viper.SetDefault("extreme", false)
+	viper.SetDefault("dash_watch", false)
 	viper.SetDefault("telemetry", true)
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
@@ -136,6 +137,7 @@ func Save(cfg *Config) error {
 	viper.Set("store_libs", cfg.StoreLibs)
 	viper.Set("split_install", cfg.SplitInstall)
 	viper.Set("extreme", cfg.Extreme)
+	viper.Set("dash_watch", cfg.DashWatch)
 
 	if err := viper.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
