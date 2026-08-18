@@ -77,8 +77,18 @@ func (m *SettingsModel) refreshExtreme() {
 	m.extreme.status = extreme.Status(project.Root, serial, apk)
 }
 
+// extremeLabel says what will actually happen on the next deploy, which is not
+// what the setting alone says.
+//
+// Off while the project is still set up is the state worth naming: the gradle
+// block is what the build obeys, so the APK still comes out with no team code
+// in it. Reading that as a plain "off" is how somebody concludes their project
+// is back to normal when it is not.
 func (m *SettingsModel) extremeLabel() string {
 	if !config.GetExtreme() {
+		if m.extreme.set {
+			return "off (project still set up)"
+		}
 		return "off"
 	}
 	if m.extreme.set {

@@ -105,6 +105,12 @@ func NewSettingsModel() (*SettingsModel, error) {
 	m.blob.limits = pathtrace.DefaultLimits()
 	m.refreshProfiles()
 	m.refreshBlob()
+
+	// Read once here as well as on the way into its own screen, so the main
+	// menu can say whether the project is still set up without going to disk
+	// on every keystroke.
+	m.refreshExtreme()
+
 	return m, nil
 }
 

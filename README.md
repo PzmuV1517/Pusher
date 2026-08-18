@@ -357,6 +357,12 @@ every deploy after that reloads.
 The same menu undoes it. Deploy once afterwards so the robot gets an APK with
 your team code back in it.
 
+Turning **Use it when deploying** off does not put team code back in the APK.
+Only undoing the setup does: the exclusion lives in your gradle file, and that
+is what the build obeys. Pusher deploys correctly either way, reloading after
+the install even when the setting is off, and says so when it does. The menu
+shows that state as `off (project still set up)`.
+
 ### It checks that the robot agreed
 
 Delivering classes and having them registered are different things, and until
