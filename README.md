@@ -357,6 +357,29 @@ every deploy after that reloads.
 The same menu undoes it. Deploy once afterwards so the robot gets an APK with
 your team code back in it.
 
+### It checks that the robot agreed
+
+Delivering classes and having them registered are different things, and until
+now pusher only knew about the first. A reload that pushed every file and
+registered none of them printed the same success as one that worked.
+
+So after each reload pusher asks the robot what it actually has. FtcDashboard
+reports the robot's own OpMode list, straight out of `RegisteredOpModes`, which
+is the same list the Driver Station shows. Compared against the OpModes your
+source declares, that turns a silent disappearance into a line of output:
+
+```
+[!] the robot registered 32 of 33 OpModes. Missing: RST TUNING
+    They compiled and reached the robot, so this is registration rather
+    than delivery. Usually the app never rescanned: restart the robot app,
+    since the SDK attaches its reload watch when it starts.
+```
+
+The check costs one connection and is best-effort: a project without
+FtcDashboard deploys exactly as before and is told nothing, because the
+dashboard is not a requirement and a working deploy should not end with a
+paragraph about a library you chose not to use.
+
 ### Kotlin
 
 Both kinds. A module configured with `build.gradle.kts` gets its exclusion

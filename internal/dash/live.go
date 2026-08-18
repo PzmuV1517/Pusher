@@ -23,9 +23,27 @@ type node struct {
 	Value json.RawMessage `json:"__value"`
 }
 
+// envelope is every message the dashboard sends.
+//
+// The payload sits beside the type rather than under a "data" key: the robot
+// serialises each message class straight out, so the field is named after
+// whatever that class calls it. Read out of the client bundled in the AAR,
+// which reads t.configRoot and t.opModeInfoList directly off the message.
 type envelope struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
+	Type string `json:"type"`
+
+	// ConfigRoot is the tree on a RECEIVE_CONFIG.
+	ConfigRoot json.RawMessage `json:"configRoot"`
+
+	// OpModeInfoList is what the robot has registered, on a
+	// RECEIVE_OP_MODE_LIST.
+	OpModeInfoList []OpMode `json:"opModeInfoList"`
+}
+
+// OpMode is one entry in the robot's own OpMode list.
+type OpMode struct {
+	Name  string `json:"name"`
+	Group string `json:"group"`
 }
 
 // Values is every tunable the dashboard holds, keyed by "Class.field".
@@ -74,7 +92,7 @@ func Fetch(addr string) (Values, error) {
 		}
 
 		var root node
-		if err := json.Unmarshal(wrapper.Data, &root); err != nil {
+		if err := json.Unmarshal(wrapper.ConfigRoot, &root); err != nil {
 			return nil, fmt.Errorf("cannot read the dashboard's config: %w", err)
 		}
 

@@ -345,3 +345,52 @@ func TestAStringIsQuotedAndAnEnumIsNot(t *testing.T) {
 		t.Errorf("enum literal = %q", enum)
 	}
 }
+
+// The payload sits beside the type, not under a "data" key. Reading it the
+// other way silently produced an empty config on every real robot, and no test
+// noticed because the only tested half was the tree walk underneath.
+//
+// The shapes here are the ones the client bundled in the dashboard AAR reads:
+// t.configRoot and t.opModeInfoList, straight off the message.
+func TestTheConfigArrivesBesideTheTypeNotUnderIt(t *testing.T) {
+	const message = `{"type":"RECEIVE_CONFIG","configRoot":{"__type":"custom","__value":` +
+		`{"Tuning":{"__type":"custom","__value":{"kP":{"__type":"double","__value":1.5}}}}}}`
+
+	var wrapper envelope
+	if err := json.Unmarshal([]byte(message), &wrapper); err != nil {
+		t.Fatal(err)
+	}
+	if wrapper.Type != "RECEIVE_CONFIG" {
+		t.Fatalf("type = %q", wrapper.Type)
+	}
+
+	var root node
+	if err := json.Unmarshal(wrapper.ConfigRoot, &root); err != nil {
+		t.Fatalf("the config was not found beside the type: %v", err)
+	}
+
+	got := Values{}
+	flatten("", root, got)
+
+	if got["Tuning.kP"] != "1.5" {
+		t.Errorf("Tuning.kP = %q, want 1.5 (got %v)", got["Tuning.kP"], got)
+	}
+}
+
+func TestTheOpModeListArrivesBesideTheType(t *testing.T) {
+	const message = `{"type":"RECEIVE_OP_MODE_LIST","opModeInfoList":` +
+		`[{"name":"RST TUNING","group":"tuning2"},{"name":"TeleOp Red","group":"$$$$$$$"}]`
+
+	var wrapper envelope
+	if err := json.Unmarshal([]byte(message+"}"), &wrapper); err != nil {
+		t.Fatal(err)
+	}
+
+	names := Names(wrapper.OpModeInfoList)
+	if len(names) != 2 || names[0] != "RST TUNING" || names[1] != "TeleOp Red" {
+		t.Errorf("names = %v, want the two the robot listed", names)
+	}
+	if wrapper.OpModeInfoList[0].Group != "tuning2" {
+		t.Errorf("group = %q", wrapper.OpModeInfoList[0].Group)
+	}
+}

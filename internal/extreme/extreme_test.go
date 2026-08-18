@@ -1268,3 +1268,100 @@ class Encoder`)
 		t.Errorf("drivers = %v, want just the Kotlin one with no extension", drivers)
 	}
 }
+
+// What the robot is asked about has to match what the Driver Station shows, or
+// the check reports OpModes missing that are sitting there under another name.
+func TestDeclaredOpModesReadTheNameTheRobotWillUse(t *testing.T) {
+	root := t.TempDir()
+	team := strings.ReplaceAll(TeamPackage, "/", ".")
+
+	writeSource(t, root, "opmode", "Named.java", `package `+team+`.opmode;
+@TeleOp(name = "RST TUNING", group = "tuning2")
+public class Named extends LinearOpMode {}`)
+
+	// No name given, so the SDK falls back to the class.
+	writeSource(t, root, "opmode", "Unnamed.java", `package `+team+`.opmode;
+@Autonomous(group = "Far")
+public class Unnamed extends LinearOpMode {}`)
+
+	// Kotlin, where the class need not be named after the file.
+	writeSource(t, root, "opmode", "Kt.kt", `package `+team+`.opmode
+
+@TeleOp(name = "Kotlin One")
+class ActuallyCalledThis : LinearOpMode()`)
+
+	writeSource(t, root, "opmode", "KtUnnamed.kt", `package `+team+`.opmode
+
+@Autonomous
+class KotlinTwo : LinearOpMode()`)
+
+	// Parked, so nobody registers it and nothing should expect it.
+	writeSource(t, root, "opmode", "Parked.java", `package `+team+`.opmode;
+@TeleOp(name = "Parked")
+@Disabled
+public class Parked extends LinearOpMode {}`)
+
+	// Only mentioned in a comment.
+	writeSource(t, root, "opmode", "Plain.java", `package `+team+`.opmode;
+// @TeleOp(name = "Not Real")
+public class Plain {}`)
+
+	declared := DeclaredOpModes(root)
+
+	want := map[string]string{
+		"RST TUNING": "Named",
+		"Unnamed":    "Unnamed",
+		"Kotlin One": "ActuallyCalledThis",
+		"KotlinTwo":  "KotlinTwo",
+	}
+
+	for _, mode := range declared {
+		class, ok := want[mode.Name]
+		if !ok {
+			t.Errorf("declared %q from %s, which the robot will never show", mode.Name, mode.File)
+			continue
+		}
+		if mode.Class != class {
+			t.Errorf("%q is class %q, want %q", mode.Name, mode.Class, class)
+		}
+		delete(want, mode.Name)
+	}
+	for name := range want {
+		t.Errorf("did not declare %q, so a missing one would go unreported", name)
+	}
+}
+
+func TestMissingFromComparesByName(t *testing.T) {
+	declared := []OpMode{
+		{Name: "RST TUNING", Class: "FlywheelRSTTest"},
+		{Name: "TeleOp Red", Class: "TeleOP"},
+		{Name: "Far Blue", Class: "FarBlue"},
+	}
+
+	missing := MissingFrom(declared, []string{"TeleOp Red", "Far Blue", "Stop Robot"})
+
+	if len(missing) != 1 || missing[0].Name != "RST TUNING" {
+		t.Fatalf("missing = %+v, want just the one the robot does not have", missing)
+	}
+
+	if got := MissingFrom(declared, []string{"RST TUNING", "TeleOp Red", "Far Blue"}); len(got) != 0 {
+		t.Errorf("reported %+v missing when the robot has them all", got)
+	}
+
+	// A robot that answered with nothing is every OpMode missing, which is the
+	// shape of a reload that registered none of them.
+	if got := MissingFrom(declared, nil); len(got) != 3 {
+		t.Errorf("an empty robot list reported %d missing, want 3", len(got))
+	}
+}
+
+func TestSummaryStopsNamingAfterAFew(t *testing.T) {
+	modes := []OpMode{{Name: "a"}, {Name: "b"}, {Name: "c"}, {Name: "d"}}
+
+	if got := Summary(modes, 2); got != "a, b, and 2 more" {
+		t.Errorf("Summary = %q", got)
+	}
+	if got := Summary(modes[:1], 2); got != "a" {
+		t.Errorf("Summary = %q", got)
+	}
+}

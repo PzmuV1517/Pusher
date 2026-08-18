@@ -136,6 +136,17 @@ func Reload(p *Project, serial string, cp Classpath, keep []string) (*Result, er
 	out.Push, out.Bytes = delivery.Push, delivery.Bytes
 	out.Total = time.Since(started)
 
+	// Asked after the timings are taken, so waiting for the robot to answer
+	// does not get reported as the reload having been slow.
+	if step, warning := verified(p.Root, serial); step != "" || warning != "" {
+		if step != "" {
+			out.Steps = append(out.Steps, step)
+		}
+		if warning != "" {
+			out.Warnings = append(out.Warnings, warning)
+		}
+	}
+
 	if delivery.ColdStart {
 		out.Warnings = append(out.Warnings,
 			"first reload on this robot: restart it once so it starts watching, then reloads are live")
