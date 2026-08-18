@@ -433,7 +433,7 @@ func (m *SettingsModel) viewBlob() string {
 		b.WriteString(helpStyle.Render("  Switching variant or version downloads it again.") + "\n")
 	}
 
-	b.WriteString(helpStyle.Render("  ↑/↓ move · enter select · esc back") + "\n")
+	b.WriteString(helpStyle.Render("  "+fit("↑/↓ move · enter select · esc back", textWidth(m.width))) + "\n")
 	return b.String()
 }
 

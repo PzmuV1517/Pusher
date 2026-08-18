@@ -28,12 +28,16 @@ const indent = 2
 
 // textWidth is the room a note has, given the terminal.
 func textWidth(width int) int {
-	if width < minWidth {
+	// Only an unset width falls back. A terminal narrower than minWidth is
+	// still a real terminal, and pretending it is eighty columns is what makes
+	// every line on it wrap.
+	if width <= 0 {
 		width = defaultWidth
 	}
+
 	room := width - indent
-	if room < minWidth-indent {
-		room = minWidth - indent
+	if room < 1 {
+		room = 1
 	}
 	return room
 }
@@ -110,8 +114,11 @@ func note(notes []string, index, width int) string {
 // fit truncates one line so it cannot wrap, which would cost the view a line it
 // did not budget for.
 func fit(line string, width int) string {
-	if width < minWidth {
-		width = defaultWidth
+	// A small budget is a small budget. This used to treat anything under
+	// minWidth as unset and truncate to eighty instead, so on a narrow terminal
+	// nothing was ever cut and every row wrapped.
+	if width < 1 {
+		width = 1
 	}
 	if lipgloss.Width(line) <= width {
 		return line
@@ -131,15 +138,15 @@ func fit(line string, width int) string {
 // A row is the three column cursor, the label out to this column, at least one
 // space, and then the value. All of that has to fit.
 func labelWidth(width, preferred, value int) int {
-	if width < minWidth {
-		return preferred
+	if width <= 0 {
+		width = defaultWidth
 	}
 
 	if room := width - rowPrefix - 1 - value; room < preferred {
 		preferred = room
 	}
-	if preferred < 8 {
-		preferred = 8
+	if preferred < 1 {
+		preferred = 1
 	}
 	return preferred
 }
@@ -153,4 +160,56 @@ func lines(s string) int {
 		return 0
 	}
 	return strings.Count(s, "\n")
+}
+
+// height is how many rows a block takes on a terminal this wide.
+//
+// Not the same as counting newlines. A line wider than the terminal is wrapped
+// by the terminal itself, onto rows nothing here budgeted for, and the view
+// then runs past the bottom of the screen leaving the frame under it on
+// display. Budgeting by newlines is what made scrolling a narrow terminal show
+// duplicates.
+func height(block string, width int) int {
+	if block == "" {
+		return 0
+	}
+	if width < 1 {
+		width = defaultWidth
+	}
+
+	rows := 0
+	for _, line := range strings.Split(strings.TrimSuffix(block, "\n"), "\n") {
+		w := lipgloss.Width(line)
+		if w <= width {
+			rows++
+			continue
+		}
+		rows += (w + width - 1) / width
+	}
+	return rows
+}
+
+// clamp drops whatever will not fit on the screen.
+//
+// A last resort rather than a layout. Screens that lay themselves out to the
+// terminal never reach it, but some are a fixed block of text, and on a very
+// short terminal that block is simply taller than the screen. Losing the bottom
+// of one screen is better than the terminal showing the bottom of the last one
+// underneath it, which is what a view taller than the window leaves behind.
+func clamp(view string, width, tall int) string {
+	if tall < 1 || height(view, width) <= tall {
+		return view
+	}
+
+	kept, used := make([]string, 0, tall), 0
+	for _, line := range strings.Split(strings.TrimSuffix(view, "\n"), "\n") {
+		rows := height(line+"\n", width)
+		if used+rows > tall {
+			break
+		}
+		kept = append(kept, line)
+		used += rows
+	}
+
+	return strings.Join(kept, "\n") + "\n"
 }

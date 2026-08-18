@@ -394,12 +394,12 @@ func (m *devModel) View() string {
 		}
 		b.WriteString("\n" + scrollStyle.Render(status) + "\n")
 	case m.err != nil:
-		b.WriteString("\n" + errStyle.Render("  ! "+m.err.Error()) + "\n")
+		b.WriteString("\n" + errStyle.Render("  ! "+fit(m.err.Error(), textWidth(m.width)-2)) + "\n")
 	case m.status != "":
-		b.WriteString("\n" + okStyle.Render("  ✓ "+m.status) + "\n")
+		b.WriteString("\n" + okStyle.Render("  ✓ "+fit(m.status, textWidth(m.width)-2)) + "\n")
 	}
 
-	return b.String()
+	return clamp(b.String(), m.width, m.height)
 }
 
 func (m *devModel) viewDevMain() string {
@@ -423,7 +423,7 @@ func (m *devModel) viewDevMain() string {
 			apk += fmt.Sprintf("  (+%d split(s))", len(m.splits)-1)
 		}
 	}
-	fmt.Fprintf(&b, "  %s\n\n", helpStyle.Render(apk))
+	fmt.Fprintf(&b, "  %s\n\n", helpStyle.Render(fit(apk, textWidth(m.width))))
 
 	list := m.layout()
 	for i, row := range list.Rows {
@@ -431,7 +431,7 @@ func (m *devModel) viewDevMain() string {
 		if i == m.cursor {
 			cursor = cursorOn.Render("> ")
 		}
-		b.WriteString(list.render(i, fmt.Sprintf("%s%s\n", cursor, devItems[row])))
+		b.WriteString(list.render(i, fmt.Sprintf("%s%s\n", cursor, fit(devItems[row], textWidth(m.width)-2)), m.width))
 	}
 
 	b.WriteString(note(devHelp, list.Rows[m.cursor], m.width))

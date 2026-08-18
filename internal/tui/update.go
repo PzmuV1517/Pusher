@@ -94,17 +94,17 @@ func (m *SettingsModel) viewUpdate() string {
 		via += " (formula " + m.update.install.Formula + ")"
 	}
 
-	b.WriteString(renderField("Installed via", via))
-	b.WriteString(renderField("Location", m.update.install.Path))
-	b.WriteString(renderField("Running", selfupdate.Current()))
+	b.WriteString(renderField("Installed via", via, m.width))
+	b.WriteString(renderField("Location", m.update.install.Path, m.width))
+	b.WriteString(renderField("Running", selfupdate.Current(), m.width))
 
 	switch {
 	case m.update.checking:
-		b.WriteString(renderField("Latest", "checking..."))
+		b.WriteString(renderField("Latest", "checking...", m.width))
 	case m.update.err != nil && m.update.release.Tag == "":
-		b.WriteString(renderField("Latest", "unavailable"))
+		b.WriteString(renderField("Latest", "unavailable", m.width))
 	default:
-		b.WriteString(renderField("Latest", m.update.release.Tag))
+		b.WriteString(renderField("Latest", m.update.release.Tag, m.width))
 	}
 
 	b.WriteString("\n")
@@ -127,21 +127,30 @@ func (m *SettingsModel) viewUpdate() string {
 		if m.update.install.Method == selfupdate.Homebrew {
 			b.WriteString(helpStyle.Render("  enter hands this to brew upgrade.") + "\n")
 		} else {
-			b.WriteString(helpStyle.Render("  enter replaces this binary in place.") + "\n")
+			b.WriteString(helpStyle.Render("  "+fit("enter replaces this binary in place.", textWidth(m.width))) + "\n")
 		}
 	}
 
-	b.WriteString("\n" + helpStyle.Render("  enter update · esc back") + "\n")
+	b.WriteString("\n" + helpStyle.Render("  "+fit("enter update · esc back", textWidth(m.width))) + "\n")
 	return b.String()
 }
 
-func renderField(label, value string) string {
-	if value == "" {
-		value = unsetStyle.Render("unknown")
-	} else {
-		value = valueStyle.Render(value)
+// The label is padded to a fixed column, so on a narrow terminal the value has
+// to be cut to what is left rather than pushed past the edge.
+func renderField(label, value string, width int) string {
+	const column = 16
+
+	room := textWidth(width) - column - 1
+	if room < 1 {
+		room = 1
 	}
-	return fmt.Sprintf("  %-16s %s\n", label, value)
+
+	if value == "" {
+		value = unsetStyle.Render(fit("unknown", room))
+	} else {
+		value = valueStyle.Render(fit(value, room))
+	}
+	return fmt.Sprintf("  %-*s %s\n", column, fit(label, column), value)
 }
 
 func (m *SettingsModel) updateLabel() string {

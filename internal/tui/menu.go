@@ -77,7 +77,7 @@ func (l menuLayout) Extra() int {
 }
 
 // render draws one row, under its heading when it starts a group.
-func (l menuLayout) render(i int, body string) string {
+func (l menuLayout) render(i int, body string, width int) string {
 	if !l.Starts[i] {
 		return body
 	}
@@ -87,7 +87,7 @@ func (l menuLayout) render(i int, body string) string {
 		out = "\n"
 	}
 	if l.Headers[i] != "" {
-		out += sectionStyle.Render("  "+l.Headers[i]) + "\n"
+		out += sectionStyle.Render("  "+fit(l.Headers[i], textWidth(width))) + "\n"
 	}
 	return out + body
 }

@@ -710,7 +710,7 @@ func (m *SettingsModel) View() string {
 		b.WriteString("\n" + okStyle.Render("  ✓ "+fit(m.status, room)) + "\n")
 	}
 
-	return b.String()
+	return clamp(b.String(), m.width, m.height)
 }
 
 func (m *SettingsModel) toggleDashWatch() {
@@ -783,10 +783,11 @@ func (m *SettingsModel) viewMain() string {
 
 	list := m.layout()
 
-	return m.fill("", "\n"+helpStyle.Render("  ↑/↓ move · enter select · q quit")+"\n",
+	return m.fill("", "\n"+helpStyle.Render("  "+fit("↑/↓ move · enter select · q quit", textWidth(m.width)))+"\n",
 		len(list.Rows), func(i int) string {
 			return list.render(i,
-				renderRow(i == m.cursor, mainItems[list.Rows[i]], values[list.Rows[i]], 29, m.width))
+				renderRow(i == m.cursor, mainItems[list.Rows[i]], values[list.Rows[i]], 29, m.width),
+				m.width)
 		})
 }
 
@@ -815,13 +816,13 @@ func (m *SettingsModel) viewProfiles() string {
 	b.WriteString(helpStyle.Render("  Robot profiles") + "\n\n")
 
 	if len(m.profiles) == 0 {
-		b.WriteString(unsetStyle.Render("  No profiles yet. Press 'a' to add one") + "\n")
+		b.WriteString(unsetStyle.Render("  "+fit("No profiles yet. Press 'a' to add one", textWidth(m.width))) + "\n")
 	}
 
 	head := b.String()
 
 	return m.fill(head,
-		"\n"+helpStyle.Render("  enter set default · a add · d delete · esc back")+"\n",
+		"\n"+helpStyle.Render("  "+fit("enter set default · a add · d delete · esc back", textWidth(m.width)))+"\n",
 		len(m.profiles), func(i int) string {
 			name := m.profiles[i]
 
@@ -874,7 +875,7 @@ func (m *SettingsModel) viewAddProfile() string {
 
 func (m *SettingsModel) viewHomeNetwork() string {
 	var b strings.Builder
-	b.WriteString(helpStyle.Render("  Network to return to after deploying") + "\n\n")
+	b.WriteString(helpStyle.Render("  "+fit("Network to return to after deploying", textWidth(m.width))) + "\n\n")
 
 	if len(m.networks) == 0 {
 		b.WriteString(unsetStyle.Render("  No saved Wi-Fi networks found") + "\n")
@@ -883,7 +884,7 @@ func (m *SettingsModel) viewHomeNetwork() string {
 	current := config.GetHomeSSID()
 
 	return m.fill(b.String(),
-		"\n"+helpStyle.Render("  ↑/↓ move · enter select · esc back")+"\n",
+		"\n"+helpStyle.Render("  "+fit("↑/↓ move · enter select · esc back", textWidth(m.width)))+"\n",
 		len(m.networks)+1, func(i int) string {
 			if i == 0 {
 				return renderRow(m.cursor == 0, "(none, stay on the robot)", "", 32, m.width)
@@ -902,7 +903,7 @@ func (m *SettingsModel) viewThreads() string {
 	var b strings.Builder
 	b.WriteString(helpStyle.Render("  Gradle worker threads") + "\n\n")
 	b.WriteString(fmt.Sprintf("  Threads: %s\n", valueStyle.Render(m.input+"▌")))
-	b.WriteString("\n" + helpStyle.Render("  enter save · esc cancel") + "\n")
+	b.WriteString("\n" + helpStyle.Render("  "+fit("enter save · esc cancel", textWidth(m.width))) + "\n")
 	return b.String()
 }
 
@@ -925,7 +926,8 @@ func (m *SettingsModel) viewThreads() string {
 // heading takes the two lines it really occupies.
 func (m *SettingsModel) fill(before, after string, total int, row func(int) string) string {
 	// The title and the blank under it, and the status line when there is one.
-	chrome := 2 + lines(before) + lines(after)
+	// Measured in rows the terminal will actually use, not newlines.
+	chrome := 2 + height(before, m.width) + height(after, m.width)
 	if m.err != nil || m.status != "" {
 		chrome += 2
 	}
@@ -939,7 +941,7 @@ func (m *SettingsModel) fill(before, after string, total int, row func(int) stri
 	tall := make([]int, total)
 	for i := range rendered {
 		rendered[i] = row(i)
-		tall[i] = lines(rendered[i])
+		tall[i] = height(rendered[i], m.width)
 	}
 
 	start, end := window(tall, m.offset, m.cursor, budget)
@@ -1059,7 +1061,9 @@ func (m *SettingsModel) renderList(total int, row func(int) string) string {
 // Both texts are cut before they are styled, since trimming a string that
 // already carries colour escapes can cut one in half.
 func renderRow(selected bool, label, value string, column, width int) string {
-	if width < minWidth {
+	// Only an unset width falls back to a default. Treating a narrow terminal
+	// as eighty columns is what padded rows out past the edge of it.
+	if width <= 0 {
 		width = defaultWidth
 	}
 
