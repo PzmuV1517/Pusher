@@ -33,6 +33,8 @@ type Build struct {
 	Classes int
 	// Kept is how many classes stayed in the APK.
 	Kept int
+	// Kotlin is how many of the sources were Kotlin.
+	Kotlin int
 	// Bridged is how many classes were handed to a library that could not
 	// otherwise see them.
 	Bridged int
@@ -56,17 +58,26 @@ func FindProject() (*Project, error) {
 	return &Project{Root: root, Wrapper: wrapper}, nil
 }
 
-// Sources lists the team's Java files.
-//
-// Anything else under the source root is an error rather than something to walk
-// past. Reloading compiles with javac, so a Kotlin file is not compiled, not
-// delivered, and not in the APK either once team code is excluded. The reload
-// would report success having quietly dropped it. Measured on a real project:
-// two of nine files would have been reloaded and seven would have vanished.
-func (p *Project) Sources() ([]string, error) {
+// Sourced is the team's code, split by what compiles it.
+type Sourced struct {
+	Java   []string
+	Kotlin []string
+}
+
+// All is every source file, in the order a Kotlin compile wants them: the
+// Kotlin first, with the Java behind it for reference rather than compilation.
+func (s Sourced) All() []string {
+	return append(append([]string{}, s.Kotlin...), s.Java...)
+}
+
+// Count is how many files the team wrote.
+func (s Sourced) Count() int { return len(s.Java) + len(s.Kotlin) }
+
+// Sources lists the team's source files.
+func (p *Project) Sources() (Sourced, error) {
 	root := filepath.Join(p.Root, SourceRoot)
 
-	var files, unsupported []string
+	var out Sourced
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -78,27 +89,20 @@ func (p *Project) Sources() ([]string, error) {
 
 		switch {
 		case strings.HasSuffix(path, ".java"):
-			files = append(files, path)
+			out.Java = append(out.Java, path)
 		case strings.HasSuffix(path, ".kt"):
-			unsupported = append(unsupported, path)
+			out.Kotlin = append(out.Kotlin, path)
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 
-	if len(unsupported) > 0 {
-		return nil, fmt.Errorf("Pusher Extreme cannot reload Kotlin: %d .kt file(s) under %s\n"+
-			"    They would be dropped from both the reload and the APK.\n"+
-			"    Undo the setup in `pusher settings` and deploy normally",
-			len(unsupported), SourceRoot)
+	if out.Count() == 0 {
+		return out, fmt.Errorf("no Java or Kotlin sources under %s", root)
 	}
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no Java sources under %s", root)
-	}
-	return files, nil
+	return out, nil
 }
 
 // Compile turns the team's sources into a jar and a dex.
@@ -120,7 +124,8 @@ func Compile(p *Project, cp Classpath, work string, keep, previous []string) (Bu
 	if err != nil {
 		return out, err
 	}
-	out.Sources = len(sources)
+	out.Sources = sources.Count()
+	out.Kotlin = len(sources.Kotlin)
 
 	// The bridge is compiled alongside, so it holds real class references
 	// rather than names looked up at runtime, which is the whole reason it can
@@ -131,7 +136,7 @@ func Compile(p *Project, cp Classpath, work string, keep, previous []string) (Bu
 		return out, err
 	}
 	if bridge != "" {
-		sources = append(sources, bridge)
+		sources.Java = append(sources.Java, bridge)
 		out.Bridged = len(configs)
 		out.Registered = RegisteredNames(configs)
 	}
@@ -141,28 +146,20 @@ func Compile(p *Project, cp Classpath, work string, keep, previous []string) (Bu
 		return out, err
 	}
 
-	// The file list goes in an argument file. A hundred and twenty paths
-	// exceeds what a command line takes on some platforms, and javac has
-	// supported @files for exactly this since forever.
-	list := filepath.Join(work, "sources.txt")
-	if err := os.WriteFile(list, []byte(strings.Join(sources, "\n")), 0o644); err != nil {
-		return out, err
+	// Kotlin first, because the Kotlin compiler reads the Java sources for
+	// their signatures without compiling them, while javac cannot read Kotlin
+	// at all and needs the classes it produced. Either half may reference the
+	// other, and this is the order that allows it.
+	if len(sources.Kotlin) > 0 {
+		if err := compileKotlin(tc, cp, sources, classes, work); err != nil {
+			return out, err
+		}
 	}
 
-	// Java 8, matching what the FTC project targets and what the hub runs. A
-	// modern javac also refuses -bootclasspath unless the target is old enough
-	// to need one, which is exactly the case here.
-	args := append([]string{
-		"-source", "8", "-target", "8",
-		"-nowarn",
-		"-encoding", "UTF-8",
-		"-d", classes,
-	}, cp.Args()...)
-	args = append(args, "@"+list)
-
-	javac := exec.Command(tc.Javac, args...)
-	if result, err := javac.CombinedOutput(); err != nil {
-		return out, fmt.Errorf("compiling %s failed:\n%s", Module, lastLines(string(result), 25))
+	if len(sources.Java) > 0 {
+		if err := compileJava(tc, cp, sources.Java, classes, work); err != nil {
+			return out, err
+		}
 	}
 
 	compiled, err := classFiles(classes)
@@ -206,6 +203,79 @@ func Compile(p *Project, cp Classpath, work string, keep, previous []string) (Bu
 	return out, nil
 }
 
+// compileJava builds the team's Java, and the bridge with it.
+//
+// The output directory goes on the classpath ahead of everything else so the
+// Java half can see whatever Kotlin just produced. On a project with no Kotlin
+// it is simply empty, and nothing about this changes.
+func compileJava(tc hotreload.Toolchain, cp Classpath, sources []string, classes, work string) error {
+	// The file list goes in an argument file. A hundred and twenty paths
+	// exceeds what a command line takes on some platforms, and javac has
+	// supported @files for exactly this since forever.
+	list := filepath.Join(work, "sources.txt")
+	if err := os.WriteFile(list, []byte(strings.Join(sources, "\n")), 0o644); err != nil {
+		return err
+	}
+
+	// Java 8, matching what the FTC project targets and what the hub runs. A
+	// modern javac also refuses -bootclasspath unless the target is old enough
+	// to need one, which is exactly the case here.
+	args := append([]string{
+		"-source", "8", "-target", "8",
+		"-nowarn",
+		"-encoding", "UTF-8",
+		"-d", classes,
+	}, cp.Args(classes)...)
+	args = append(args, "@"+list)
+
+	javac := exec.Command(tc.Javac, args...)
+	if result, err := javac.CombinedOutput(); err != nil {
+		return fmt.Errorf("compiling %s failed:\n%s", Module, lastLines(string(result), 25))
+	}
+
+	return nil
+}
+
+// compileKotlin builds the team's Kotlin into the same output directory.
+//
+// The compiler ships as a jar rather than a binary, so it is launched the way
+// Gradle launches it, and it comes out of the Gradle cache at the version the
+// project itself builds with.
+func compileKotlin(tc hotreload.Toolchain, cp Classpath, sources Sourced, classes, work string) error {
+	kotlin, err := FindKotlin(KotlinVersion(cp))
+	if err != nil {
+		return err
+	}
+
+	// Same argument-file reasoning as javac, and the same syntax.
+	list := filepath.Join(work, "kotlin-sources.txt")
+	if err := os.WriteFile(list, []byte(strings.Join(sources.All(), "\n")), 0o644); err != nil {
+		return err
+	}
+
+	// -no-stdlib because the project's own copy is already on the classpath,
+	// and it is the copy the APK ships. Letting the compiler add its own would
+	// put a second, possibly different standard library in front of it.
+	args := []string{
+		"-cp", strings.Join(kotlin.Jars, string(os.PathListSeparator)),
+		"org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+		"-no-stdlib",
+		"-nowarn",
+		"-jvm-target", "1.8",
+		"-classpath", cp.Flat(),
+		"-d", classes,
+		"@" + list,
+	}
+
+	kotlinc := exec.Command(tc.Java(), args...)
+	if result, err := kotlinc.CombinedOutput(); err != nil {
+		return fmt.Errorf("compiling the Kotlin in %s failed:\n%s",
+			Module, lastLines(string(result), 25))
+	}
+
+	return nil
+}
+
 // classFiles lists what javac produced, relative to the output directory.
 func classFiles(root string) ([]string, error) {
 	var files []string
@@ -230,7 +300,7 @@ func classFiles(root string) ([]string, error) {
 	}
 
 	if len(files) == 0 {
-		return nil, fmt.Errorf("javac produced no classes")
+		return nil, fmt.Errorf("nothing compiled to a class")
 	}
 	return files, nil
 }

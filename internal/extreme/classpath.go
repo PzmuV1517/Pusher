@@ -57,16 +57,28 @@ type Classpath struct {
 	Boot []string
 }
 
-// Args renders the classpath for javac.
-func (c Classpath) Args() []string {
+// Args renders the classpath for javac. Anything in first goes ahead of the
+// project's own jars, which is how the Kotlin output becomes visible to the
+// Java half of a mixed compile.
+func (c Classpath) Args(first ...string) []string {
 	var args []string
 	if len(c.Boot) > 0 {
 		args = append(args, "-bootclasspath", strings.Join(c.Boot, string(os.PathListSeparator)))
 	}
-	if len(c.Compile) > 0 {
-		args = append(args, "-classpath", strings.Join(c.Compile, string(os.PathListSeparator)))
+	if entries := append(append([]string{}, first...), c.Compile...); len(entries) > 0 {
+		args = append(args, "-classpath", strings.Join(entries, string(os.PathListSeparator)))
 	}
 	return args
+}
+
+// Flat is every jar as one classpath, platform included.
+//
+// For the Kotlin compiler, which has no notion of a boot classpath: android.jar
+// is just another entry to it, and leaving it out means every android.* type in
+// the team's code goes unresolved.
+func (c Classpath) Flat() string {
+	return strings.Join(append(append([]string{}, c.Compile...), c.Boot...),
+		string(os.PathListSeparator))
 }
 
 // ResolveClasspath asks Gradle what the module compiles against.

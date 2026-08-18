@@ -562,20 +562,18 @@ func TestSetupRefusesWhatItCannotReload(t *testing.T) {
 	t.Run("kotlin sources", func(t *testing.T) {
 		root := build(t, "build.gradle", "Robot.java", "Intake.kt")
 
-		err := Supported(root)
-		if err == nil {
-			t.Fatal("a project with Kotlin sources was accepted")
+		if err := Supported(root); err != nil {
+			t.Fatalf("a project with Kotlin sources was refused: %v", err)
 		}
-		if !strings.Contains(err.Error(), "Kotlin") {
-			t.Errorf("the reason does not mention Kotlin: %v", err)
+		if err := Exclude(root); err != nil {
+			t.Fatalf("Exclude: %v", err)
 		}
 
-		// And nothing was written on the way to finding out.
-		if err := Exclude(root); err == nil {
-			t.Error("Exclude went ahead anyway")
-		}
-		if Excluded(root) {
-			t.Error("Exclude left a block behind on a project it refused")
+		// The half that keeps .kt out of the APK, without which the team's
+		// Kotlin is packaged and reloaded at once and the packaged copy wins.
+		block := string(mustRead(t, GradleFile(root)))
+		if !strings.Contains(block, "endsWith('Kotlin')") {
+			t.Error("the block does not exclude anything from the Kotlin compile tasks")
 		}
 	})
 
@@ -590,11 +588,22 @@ func TestSetupRefusesWhatItCannotReload(t *testing.T) {
 		}
 	})
 
-	t.Run("kotlin dsl and kotlin sources is still refused", func(t *testing.T) {
+	t.Run("kotlin dsl with kotlin sources", func(t *testing.T) {
 		root := build(t, "build.gradle.kts", "Robot.java", "Intake.kt")
 
-		if err := Supported(root); err == nil {
-			t.Error("Kotlin sources were accepted because the DSL now is")
+		if err := Supported(root); err != nil {
+			t.Fatalf("a Kotlin project was refused: %v", err)
+		}
+		if err := Exclude(root); err != nil {
+			t.Fatalf("Exclude: %v", err)
+		}
+
+		block := string(mustRead(t, GradleFile(root)))
+		if !strings.Contains(block, `endsWith("Kotlin")`) {
+			t.Error("the block does not exclude anything from the Kotlin compile tasks")
+		}
+		if !strings.Contains(block, "PatternFilterable") {
+			t.Error("the Kotlin DSL block is missing the cast that makes exclude resolve")
 		}
 	})
 
@@ -1041,5 +1050,221 @@ func TestStaleNamesAreTheDifference(t *testing.T) {
 	if got := RegisteredNames([]string{"a.b.One", "Two"}); len(got) != 2 ||
 		got[0] != "One" || got[1] != "Two" {
 		t.Errorf("got %v", got)
+	}
+}
+
+// writeSource puts one team source file on disk, in whichever language its
+// extension says.
+func writeSource(t *testing.T, root, pkg, file, body string) {
+	t.Helper()
+
+	dir := filepath.Join(root, SourceRoot, filepath.FromSlash(TeamPackage), pkg)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, file), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The closure has to follow Kotlin the same way it follows Java, or keeping one
+// Kotlin class in the APK leaves the build unable to resolve what it uses.
+func TestAKeptKotlinClassKeepsWhatItNeeds(t *testing.T) {
+	root := t.TempDir()
+	team := strings.ReplaceAll(TeamPackage, "/", ".")
+
+	writeSource(t, root, "robot", "Robot.kt", `package `+team+`.robot
+
+import `+team+`.hw.Intake
+import `+team+`.util.Clock as Timer
+
+class Robot {
+    val intake = Intake()
+    val helper = Helper()
+}`)
+	writeSource(t, root, "robot", "Helper.kt", "package "+team+".robot\n\nclass Helper")
+	writeSource(t, root, "hw", "Intake.kt", "package "+team+".hw\n\nclass Intake")
+	writeSource(t, root, "util", "Clock.java", "package "+team+".util;\npublic class Clock {}")
+	writeSource(t, root, "opmode", "Unrelated.kt", "package "+team+".opmode\n\nclass Unrelated")
+
+	kept := Closure(root, []string{TeamPackage + "/robot/Robot"})
+
+	want := map[string]bool{
+		TeamPackage + "/robot/Robot": true,
+		// Imported, with no semicolon to anchor on.
+		TeamPackage + "/hw/Intake": true,
+		// Imported under another name, and written in Java besides.
+		TeamPackage + "/util/Clock": true,
+		// Same package, so no import to follow.
+		TeamPackage + "/robot/Helper": true,
+	}
+
+	for _, entry := range kept {
+		if !want[entry] {
+			t.Errorf("kept %s, which nothing needs", entry)
+		}
+		delete(want, entry)
+	}
+	for entry := range want {
+		t.Errorf("did not keep %s, so the build cannot resolve it", entry)
+	}
+}
+
+// A wildcard import never matched while the pattern required a semicolon after
+// the name, so `import x.y.*;` kept nothing and the build failed on a package
+// the keep list was supposed to have covered.
+func TestAWildcardImportKeepsTheWholePackage(t *testing.T) {
+	root := t.TempDir()
+	team := strings.ReplaceAll(TeamPackage, "/", ".")
+
+	writeSource(t, root, "opmode", "Auto.java", `package `+team+`.opmode;
+import `+team+`.hw.*;
+public class Auto {}`)
+	writeSource(t, root, "hw", "Arm.java", "package "+team+".hw;\npublic class Arm {}")
+	writeSource(t, root, "hw", "Lift.java", "package "+team+".hw;\npublic class Lift {}")
+	writeSource(t, root, "other", "Away.java", "package "+team+".other;\npublic class Away {}")
+
+	kept := Closure(root, []string{TeamPackage + "/opmode/Auto"})
+
+	for _, want := range []string{TeamPackage + "/hw/Arm", TeamPackage + "/hw/Lift"} {
+		found := false
+		for _, entry := range kept {
+			if entry == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("a wildcard import did not keep %s", want)
+		}
+	}
+
+	for _, entry := range kept {
+		if entry == TeamPackage+"/other/Away" {
+			t.Error("the wildcard kept a package it does not name")
+		}
+	}
+}
+
+func TestTheKotlinVersionComesFromTheStandardLibrary(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		jars []string
+		want string
+	}{
+		{"plain", []string{"/c/kotlin-stdlib-2.4.0.jar"}, "2.4.0"},
+		{"beta", []string{"/c/kotlin-stdlib-2.2.0-Beta1.jar"}, "2.2.0-Beta1"},
+		{"among others", []string{"/c/annotations-23.0.jar", "/c/kotlin-stdlib-1.9.22.jar"}, "1.9.22"},
+		{"not the jdk one", []string{"/c/kotlin-stdlib-jdk8-1.8.22.jar", "/c/kotlin-stdlib-1.8.22.jar"}, "1.8.22"},
+		{"no kotlin at all", []string{"/c/annotations-23.0.jar"}, ""},
+	} {
+		if got := KotlinVersion(Classpath{Compile: tc.jars}); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestVersionsCompareNumerically(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want int
+	}{
+		{"1.10", "1.9", 1},
+		{"1.9", "1.10", -1},
+		{"2.4.0", "2.4.0", 0},
+		{"2.4.0", "2.4", 1},
+		{"1.0.20200330", "1.0.20190101", 1},
+	} {
+		if got := compareVersions(tc.a, tc.b); got != tc.want {
+			t.Errorf("compareVersions(%q, %q) = %d, want %d", tc.a, tc.b, got, tc.want)
+		}
+	}
+}
+
+// A Kotlin project pusher has never built has no compiler to borrow, and saying
+// so beats a stack trace out of a java launcher.
+func TestFindKotlinExplainsAnEmptyCache(t *testing.T) {
+	t.Setenv("GRADLE_USER_HOME", t.TempDir())
+
+	if _, err := FindKotlin(""); err == nil {
+		t.Error("no version was accepted")
+	}
+
+	_, err := FindKotlin("2.4.0")
+	if err == nil {
+		t.Fatal("an empty cache was accepted")
+	}
+	if !strings.Contains(err.Error(), "gradlew") && !strings.Contains(err.Error(), "Gradle") {
+		t.Errorf("the reason does not say what to do about it: %v", err)
+	}
+}
+
+// Kotlin does not make a file name its class name, so the bridge cannot read
+// one off the other. Registering Config instead of Tuning would hand
+// FtcDashboard a class that is not there.
+func TestAKotlinConfigIsNamedByItsDeclaration(t *testing.T) {
+	root := t.TempDir()
+	team := strings.ReplaceAll(TeamPackage, "/", ".")
+
+	writeSource(t, root, "tuning", "Config.kt", `package `+team+`.tuning
+
+import com.acmerobotics.dashboard.config.Config
+
+@Config
+object Tuning {
+    @JvmField var kP = 0.0
+}`)
+	writeSource(t, root, "tuning", "Limits.java", `package `+team+`.tuning;
+@Config
+public class Limits {}`)
+
+	found := FindReflected(root)
+	if len(found.Classes) != 2 {
+		t.Fatalf("found %d @Config classes, want 2: %+v", len(found.Classes), found.Classes)
+	}
+
+	names := map[string]bool{}
+	for _, c := range found.Classes {
+		names[c.Class] = true
+	}
+
+	if !names["Tuning"] {
+		t.Errorf("the Kotlin object was not named after its declaration: %+v", found.Classes)
+	}
+	if names["Config"] {
+		t.Error("the Kotlin object was named after its file, which is not a class")
+	}
+	if !names["Limits"] {
+		t.Error("the Java class was not found")
+	}
+
+	bridged := ConfigClasses(root, nil)
+	want := map[string]bool{team + ".tuning.Tuning": true, team + ".tuning.Limits": true}
+	for _, name := range bridged {
+		if !want[name] {
+			t.Errorf("bridged %s, which is not a class in the project", name)
+		}
+		delete(want, name)
+	}
+	for name := range want {
+		t.Errorf("did not bridge %s, so its tuning disappears on a reload", name)
+	}
+}
+
+// A hardware driver written in Kotlin cannot be reloaded any more than one
+// written in Java, and has to be kept in the APK the same way.
+func TestKotlinDriversAreKeptToo(t *testing.T) {
+	root := t.TempDir()
+	team := strings.ReplaceAll(TeamPackage, "/", ".")
+
+	writeSource(t, root, "hw", "Encoder.kt", `package `+team+`.hw
+
+@DeviceProperties(name = "Encoder", xmlTag = "Encoder")
+class Encoder`)
+	writeSource(t, root, "hw", "Plain.kt", "package "+team+".hw\n\nclass Plain")
+
+	drivers := FindDrivers(root)
+
+	if len(drivers) != 1 || drivers[0] != TeamPackage+"/hw/Encoder" {
+		t.Errorf("drivers = %v, want just the Kotlin one with no extension", drivers)
 	}
 }

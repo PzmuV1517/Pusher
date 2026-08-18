@@ -45,27 +45,6 @@ var keptRe = regexp.MustCompile(`// Kept in the APK anyway: (.*)`)
 // before any of it is considered, which drops the kept class along with its
 // package and leaves the keep list silently dead.
 func blockFor(root string, keep []string) string {
-	// A keep entry is either a package, which ends in a slash once trimmed, or
-	// a single class. Both are matched by prefix, with the class form pinned to
-	// a dot so Foo does not also keep FooBar.
-	quote := "'"
-	indent := "                        "
-	if KotlinDSL(root) {
-		quote = `"`
-		indent = "                    "
-	}
-
-	var conditions strings.Builder
-	for _, entry := range keep {
-		trimmed := strings.TrimSuffix(entry, "/")
-		suffix := "/"
-		if isClassEntry(root, trimmed) {
-			suffix = "."
-		}
-		fmt.Fprintf(&conditions, " &&\n%s!path.startsWith(%s%s%s%s)",
-			indent, quote, trimmed, suffix, quote)
-	}
-
 	kept := "nothing"
 	if len(keep) > 0 {
 		kept = strings.Join(keep, ", ")
@@ -79,12 +58,33 @@ func blockFor(root string, keep []string) string {
 // Kept in the APK anyway: ` + kept + "\n"
 
 	if KotlinDSL(root) {
-		return head + kotlinBlock(conditions.String()) + "\n" + endMarker
+		return head + kotlinBlock(root, keep) + "\n" + endMarker
 	}
-	return head + groovyBlock(conditions.String()) + "\n" + endMarker
+	return head + groovyBlock(root, keep) + "\n" + endMarker
 }
 
-func groovyBlock(conditions string) string {
+// conditions renders the keep list as the tail of the exclusion test.
+//
+// A keep entry is either a package, which ends in a slash once trimmed, or a
+// single class. Both are matched by prefix, with the class form pinned to a dot
+// so Foo does not also keep FooBar, and so it covers Foo.java and Foo.kt alike.
+func conditions(root string, keep []string, quote, indent string) string {
+	var out strings.Builder
+
+	for _, entry := range keep {
+		trimmed := strings.TrimSuffix(entry, "/")
+		suffix := "/"
+		if isClassEntry(root, trimmed) {
+			suffix = "."
+		}
+		fmt.Fprintf(&out, " &&\n%s!path.startsWith(%s%s%s%s)",
+			indent, quote, trimmed, suffix, quote)
+	}
+
+	return out.String()
+}
+
+func groovyBlock(root string, keep []string) string {
 	return `android {
     sourceSets {
         main {
@@ -92,12 +92,22 @@ func groovyBlock(conditions string) string {
                 exclude { details ->
                     def path = details.path
                     !details.directory &&
-                        path.startsWith('` + TeamPackage + `/')` + conditions + `
+                        path.startsWith('` + TeamPackage + `/')` +
+		conditions(root, keep, "'", "                        ") + `
                 }
             }
         }
     }
-}`
+}
+
+` + kotlinTasks(`tasks.matching { it.name.startsWith('compile') && it.name.endsWith('Kotlin') }.configureEach {
+    exclude { details ->
+        def path = details.path
+        !details.directory &&
+            path.startsWith('`+TeamPackage+`/')`+
+		conditions(root, keep, "'", "            ")+`
+    }
+}`)
 }
 
 // kotlinBlock is the same exclusion for a build.gradle.kts.
@@ -106,18 +116,48 @@ func groovyBlock(conditions string) string {
 // com.android.build.api.dsl.AndroidSourceDirectorySet, which has no exclude at
 // all; the object behind it implements the older interface, which does. Groovy
 // never showed this because it dispatches dynamically.
-func kotlinBlock(conditions string) string {
+func kotlinBlock(root string, keep []string) string {
 	return `android {
     sourceSets {
         getByName("main") {
             (java as com.android.build.gradle.api.AndroidSourceDirectorySet).exclude { details ->
                 val path = details.path
                 !details.isDirectory &&
-                    path.startsWith("` + TeamPackage + `/")` + conditions + `
+                    path.startsWith("` + TeamPackage + `/")` +
+		conditions(root, keep, `"`, "                    ") + `
             }
         }
     }
-}`
+}
+
+` + kotlinTasks(`tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
+    (this as org.gradle.api.tasks.util.PatternFilterable).exclude { details ->
+        val path = details.path
+        !details.isDirectory &&
+            path.startsWith("`+TeamPackage+`/")`+
+		conditions(root, keep, `"`, "            ")+`
+    }
+}`)
+}
+
+// kotlinTasks explains the second half of the exclusion, which is the half that
+// is easy to leave out and impossible to notice missing.
+//
+// Excluding from the android source set does nothing to Kotlin. The Kotlin
+// plugin compiles from its own source set, so on a project with .kt files the
+// team's classes stayed in the APK while also being reloaded, and parent-first
+// delegation means the APK copy is the one that runs. Measured on a real
+// project: six of six Kotlin classes survived an exclusion that reported
+// success.
+//
+// Matched by task name rather than by type, so this file never has to mention a
+// plugin that a Java-only project does not apply. There, it matches nothing and
+// costs nothing.
+func kotlinTasks(block string) string {
+	return `// The Kotlin plugin compiles from its own source set, which the exclusion
+// above does not reach. Without this, .kt files stay in the APK and the reload
+// is overruled by them.
+` + block
 }
 
 // isClassEntry reports whether a keep entry names one class rather than a
@@ -130,8 +170,10 @@ func kotlinBlock(conditions string) string {
 // Only a root with neither on disk falls back to the convention.
 func isClassEntry(root, entry string) bool {
 	if root != "" {
-		if _, err := os.Stat(filepath.Join(root, SourceRoot, filepath.FromSlash(entry)+".java")); err == nil {
-			return true
+		for _, ext := range []string{".java", ".kt"} {
+			if _, err := os.Stat(filepath.Join(root, SourceRoot, filepath.FromSlash(entry)+ext)); err == nil {
+				return true
+			}
 		}
 		if info, err := os.Stat(filepath.Join(root, SourceRoot, filepath.FromSlash(entry))); err == nil {
 			return !info.IsDir()
@@ -172,18 +214,6 @@ func KotlinDSL(root string) bool {
 func Supported(root string) error {
 	if _, err := os.Stat(GradleFile(root)); err != nil {
 		return fmt.Errorf("no %s to add the exclusion to", filepath.Join(Module, "build.gradle"))
-	}
-
-	kotlin := 0
-	filepath.Walk(filepath.Join(root, SourceRoot), func(path string, info os.FileInfo, err error) error {
-		if err == nil && !info.IsDir() && strings.HasSuffix(path, ".kt") {
-			kotlin++
-		}
-		return nil
-	})
-	if kotlin > 0 {
-		return fmt.Errorf("this project has %d Kotlin source file(s), which reloading "+
-			"compiles with javac and would silently drop", kotlin)
 	}
 
 	return nil

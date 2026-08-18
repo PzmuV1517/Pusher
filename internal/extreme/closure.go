@@ -24,7 +24,10 @@ import (
 // needs has to be kept with it, or the build cannot succeed.
 
 var (
-	importRe = regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([\w.]+)\s*;`)
+	// No trailing semicolon in the pattern: Kotlin does not write one, and a
+	// wildcard never matched with it there, so `import x.y.*;` quietly kept
+	// nothing at all on the Java side too.
+	importRe = regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?((?:\w+\.)*(?:\w+|\*))`)
 	wordRe   = regexp.MustCompile(`\b\w+\b`)
 
 	// A team class can also be named in full where it is used, with no import
@@ -80,11 +83,14 @@ func Closure(root string, keep []string) []string {
 	return out
 }
 
-// sources is every team java file, addressable the two ways a reference can
+// sources is every team source file, addressable the two ways a reference can
 // name one.
 type sources struct {
-	// files holds each path under the team package, without .java.
+	// files holds each path under the team package, without its extension.
 	files map[string]bool
+	// ext remembers which language each one was written in, because the path
+	// alone no longer says.
+	ext map[string]string
 	// packages maps a package path to the files in it.
 	packages map[string][]string
 	// byName maps a fully qualified class name to its path.
@@ -94,6 +100,7 @@ type sources struct {
 func indexSources(root string) sources {
 	out := sources{
 		files:    map[string]bool{},
+		ext:      map[string]string{},
 		packages: map[string][]string{},
 		byName:   map[string]string{},
 	}
@@ -101,7 +108,12 @@ func indexSources(root string) sources {
 	base := filepath.Join(root, SourceRoot)
 
 	filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".java") {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		ext := filepath.Ext(path)
+		if ext != ".java" && ext != ".kt" {
 			return nil
 		}
 
@@ -110,7 +122,7 @@ func indexSources(root string) sources {
 			return nil
 		}
 
-		entry := strings.TrimSuffix(filepath.ToSlash(rel), ".java")
+		entry := strings.TrimSuffix(filepath.ToSlash(rel), ext)
 		if !strings.HasPrefix(entry, TeamPackage+"/") {
 			return nil
 		}
@@ -118,6 +130,7 @@ func indexSources(root string) sources {
 		pkg := filepath.ToSlash(filepath.Dir(entry))
 
 		out.files[entry] = true
+		out.ext[entry] = ext
 		out.packages[pkg] = append(out.packages[pkg], entry)
 		out.byName[strings.ReplaceAll(entry, "/", ".")] = entry
 
@@ -129,7 +142,7 @@ func indexSources(root string) sources {
 
 // needs is every team file the given one refers to.
 func (s sources) needs(root, file string) []string {
-	blob, err := os.ReadFile(filepath.Join(root, SourceRoot, filepath.FromSlash(file)+".java"))
+	blob, err := os.ReadFile(filepath.Join(root, SourceRoot, filepath.FromSlash(file)+s.ext[file]))
 	if err != nil {
 		return nil
 	}

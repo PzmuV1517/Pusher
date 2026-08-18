@@ -226,8 +226,7 @@ func ConfigClasses(root string, keep []string) []string {
 			continue
 		}
 
-		name := strings.ReplaceAll(r.Package, "/", ".") + "." +
-			strings.TrimSuffix(r.File, ".java")
+		name := strings.ReplaceAll(r.Package, "/", ".") + "." + r.Class
 		out = append(out, name)
 	}
 

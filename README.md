@@ -233,8 +233,9 @@ It needs a Groovy `build.common.gradle`. On a project configured with the Kotlin
 DSL it will not work, and is not going to: the lines it patches are written by
 your team in whichever of several shapes you wrote them, so it would sit there
 matching nothing while every deploy went on packaging everything. Pusher stops
-rather than pretend. Pusher Extreme is different and does support the Kotlin
-DSL, because it writes one block of its own rather than editing yours.
+rather than pretend. Pusher Extreme is different and supports both the Kotlin
+DSL and Kotlin source files, because it writes one block of its own rather than
+editing yours.
 
 ## Deploy speed
 
@@ -355,6 +356,33 @@ every deploy after that reloads.
 
 The same menu undoes it. Deploy once afterwards so the robot gets an APK with
 your team code back in it.
+
+### Kotlin
+
+Both kinds. A module configured with `build.gradle.kts` gets its exclusion
+written in that dialect, and `.kt` source files are compiled and reloaded
+alongside `.java` ones.
+
+The compiler is the one your project already builds with. Pusher reads the
+Kotlin version off the `kotlin-stdlib` on your compile classpath and takes the
+matching `kotlin-compiler-embeddable` out of the Gradle cache, where the Kotlin
+plugin put it. Nothing is downloaded, and a project that has never been built is
+told to build once rather than guessed at. Kotlin is compiled first, with your
+Java files passed alongside for their signatures, then javac compiles the Java
+against what came out, so the two halves can refer to each other in both
+directions. Measured on a real Kotlin project: 7 files, 2.0 seconds to a dex.
+
+The exclusion has a second half for Kotlin, and it is the half worth knowing
+about. Excluding from the android source set does nothing to `.kt` files,
+because the Kotlin plugin compiles from a source set of its own. Without the
+extra block, team Kotlin stayed in the APK while also being reloaded, and
+parent-first delegation means the packaged copy is the one that runs: the reload
+would report success and change nothing. Measured before the fix, six of six
+Kotlin classes survived an exclusion that reported success.
+
+`@Config` classes written as Kotlin `object`s are bridged like any other, named
+by their declaration rather than their file, since Kotlin does not require the
+two to match.
 
 ### How it works, briefly
 

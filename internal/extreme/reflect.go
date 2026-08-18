@@ -37,11 +37,22 @@ var reflectedBy = map[string]string{
 
 var annotationRe = regexp.MustCompile(`(?m)^\s*@(\w+)`)
 
+// declarationRe names what a Kotlin annotation was attached to.
+//
+// Kotlin does not require the file to be named after what is in it, so the
+// class FtcDashboard has to be handed cannot be read off the filename the way
+// it can in Java. Config.kt holding `object Tuning` is `Tuning`, and bridging
+// `Config` would register a class that does not exist.
+var declarationRe = regexp.MustCompile(`(?m)^\s*(?:[\w@]+\s+)*?(?:object|class|interface)\s+(\w+)`)
+
 // Reflected is a class something in the APK reads by scanning.
 type Reflected struct {
 	Package string
 	File    string
-	Why     string
+	// Class is the name the JVM knows it by, which in Kotlin need not be the
+	// file's.
+	Class string
+	Why   string
 }
 
 // Reflection is what a project would lose by reloading.
@@ -74,7 +85,7 @@ func FindReflected(root string) Reflection {
 	packages := map[string]bool{}
 
 	filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".java") {
+		if err != nil || info.IsDir() || !isSource(path) {
 			return nil
 		}
 
@@ -83,8 +94,8 @@ func FindReflected(root string) Reflection {
 			return nil
 		}
 
-		for _, match := range annotationRe.FindAllStringSubmatch(string(content), -1) {
-			why, reflected := reflectedBy["@"+match[1]]
+		for _, match := range annotationRe.FindAllStringSubmatchIndex(string(content), -1) {
+			why, reflected := reflectedBy["@"+string(content[match[2]:match[3]])]
 			if !reflected {
 				continue
 			}
@@ -99,6 +110,7 @@ func FindReflected(root string) Reflection {
 			out.Classes = append(out.Classes, Reflected{
 				Package: pkg,
 				File:    filepath.Base(path),
+				Class:   className(path, string(content), match[1]),
 				Why:     why,
 			})
 			break
@@ -117,6 +129,30 @@ func FindReflected(root string) Reflection {
 	}
 
 	return out
+}
+
+// isSource reports whether a file is team code in either language.
+func isSource(path string) bool {
+	return strings.HasSuffix(path, ".java") || strings.HasSuffix(path, ".kt")
+}
+
+// className is what the JVM calls the annotated declaration.
+//
+// Java takes it from the filename, which the language guarantees for a public
+// class. Kotlin guarantees nothing of the sort, so the declaration after the
+// annotation is read instead, and the filename is only the fallback for a file
+// this cannot make sense of.
+func className(path, content string, after int) string {
+	base := strings.TrimSuffix(strings.TrimSuffix(filepath.Base(path), ".java"), ".kt")
+
+	if !strings.HasSuffix(path, ".kt") || after >= len(content) {
+		return base
+	}
+
+	if m := declarationRe.FindStringSubmatch(content[after:]); m != nil {
+		return m[1]
+	}
+	return base
 }
 
 // driverAnnotations mark a class the SDK instantiates as a hardware device.
@@ -143,7 +179,7 @@ func FindDrivers(root string) []string {
 	var out []string
 
 	filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".java") {
+		if err != nil || info.IsDir() || !isSource(path) {
 			return nil
 		}
 
@@ -161,7 +197,9 @@ func FindDrivers(root string) []string {
 			if err != nil {
 				return nil
 			}
-			out = append(out, strings.TrimSuffix(filepath.ToSlash(rel), ".java"))
+
+			entry := filepath.ToSlash(rel)
+			out = append(out, strings.TrimSuffix(strings.TrimSuffix(entry, ".java"), ".kt"))
 			return nil
 		}
 		return nil

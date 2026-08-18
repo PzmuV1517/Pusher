@@ -142,6 +142,12 @@ type Toolchain struct {
 	Jars  []string
 }
 
+// Java is the launcher beside javac, for tools that ship as a jar rather than
+// as a binary. The Kotlin compiler is one.
+func (t Toolchain) Java() string {
+	return filepath.Join(filepath.Dir(t.Javac), exeName("java"))
+}
+
 // Cleanup removes the jars unpacked out of the AARs.
 func (t Toolchain) Cleanup() {
 	for _, jar := range t.Jars {
