@@ -46,6 +46,8 @@ type Config struct {
 	Extreme bool `mapstructure:"extreme"`
 
 	DashWatch bool `mapstructure:"dash_watch"`
+
+	UpdateNotify bool `mapstructure:"update_notify"`
 }
 
 var (
@@ -94,6 +96,7 @@ func Initialize() error {
 	viper.SetDefault("split_install", false)
 	viper.SetDefault("extreme", false)
 	viper.SetDefault("dash_watch", false)
+	viper.SetDefault("update_notify", true)
 	viper.SetDefault("telemetry", true)
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
@@ -138,6 +141,7 @@ func Save(cfg *Config) error {
 	viper.Set("split_install", cfg.SplitInstall)
 	viper.Set("extreme", cfg.Extreme)
 	viper.Set("dash_watch", cfg.DashWatch)
+	viper.Set("update_notify", cfg.UpdateNotify)
 
 	if err := viper.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
@@ -378,6 +382,44 @@ func GetLastPing() string {
 // SetLastPing records when this device was counted.
 func SetLastPing(when string) error {
 	viper.Set("last_ping", when)
+	return viper.WriteConfig()
+}
+
+// GetUpdateNotify reports whether pusher may say that a newer version exists.
+func GetUpdateNotify() bool {
+	return viper.GetBool("update_notify")
+}
+
+// SetUpdateNotify controls whether pusher checks for newer versions at all.
+func SetUpdateNotify(enabled bool) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	cfg.UpdateNotify = enabled
+	return Save(cfg)
+}
+
+// GetLastUpdateCheck is when pusher last asked whether it was out of date.
+func GetLastUpdateCheck() string {
+	return viper.GetString("last_update_check")
+}
+
+// SetLastUpdateCheck records when pusher last asked.
+func SetLastUpdateCheck(when string) error {
+	viper.Set("last_update_check", when)
+	return viper.WriteConfig()
+}
+
+// GetNotifiedVersion is the newest version somebody has already been told about.
+func GetNotifiedVersion() string {
+	return viper.GetString("notified_version")
+}
+
+// SetNotifiedVersion records the version somebody has been told about, so the
+// same one is not announced every day.
+func SetNotifiedVersion(version string) error {
+	viper.Set("notified_version", version)
 	return viper.WriteConfig()
 }
 

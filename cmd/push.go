@@ -12,6 +12,7 @@ import (
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/gradle"
+	"github.com/andreibanu/pusher/internal/updates"
 	"github.com/andreibanu/pusher/internal/wifi"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -38,9 +39,25 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("[OK] Gradle wrapper: %s\n", gradlePath)
 
+	// Started before anything else so it overlaps the checks below, and asked
+	// twice: once here and once when the deploy is over.
+	blob := updates.WatchBlob(gradle.ProjectDir(gradlePath))
+
+	err = push(gradlePath, blob)
+	announceBlob(blob, blobEndWait, true)
+
+	return err
+}
+
+func push(gradlePath string, blob *updates.BlobCheck) error {
+
 	if !adb.IsInstalled() {
 		return fmt.Errorf("adb not found - please install Android SDK Platform-Tools")
 	}
+
+	// Said here rather than the moment the check started, so the adb work above
+	// overlaps some of the waiting.
+	announceBlob(blob, blobStartWait, false)
 
 	// Before the build, the Wi-Fi hop and the install, so a deploy that would
 	// have silently skipped slimming stops while stopping is still cheap.

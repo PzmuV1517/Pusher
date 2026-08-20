@@ -117,6 +117,22 @@ save immediately to `~/.config/pusher/config.yaml`.
 is handed to `brew upgrade` so the next one does not undo it; anything else
 replaces its own binary, verified against the release checksums.
 
+Pusher also looks for a newer release on its own, once a day, in the background.
+When it finds one it says so with a desktop notification rather than a line in
+the terminal, because the point is to reach somebody who has stopped reading it:
+macOS through osascript, Linux through notify-send, Windows through a toast. A
+version is announced once rather than every day until it is installed, and a
+check that cannot reach GitHub says nothing at all. Turn it off with
+**Tell me about updates**, or `PUSHER_NO_NOTIFY=1` to keep the check and drop
+only the notification.
+
+If your project uses the blob library, a deploy says when a newer release of it
+is out. Twice: once at the start, where it is still cheap to stop and take it,
+and once at the end, where it is the last thing on screen rather than something
+a minute of Gradle output scrolled past. The check runs beside the deploy rather
+than in front of it, and a project without blob, or a machine without access to
+the repository, is told nothing.
+
 ## Hardware configurations
 
 The robot's hardware configuration is one XML file in `/sdcard/FIRST` that the

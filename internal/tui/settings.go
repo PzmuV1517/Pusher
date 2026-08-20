@@ -9,6 +9,7 @@ import (
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/feature"
 	"github.com/andreibanu/pusher/internal/ftcproject"
+	"github.com/andreibanu/pusher/internal/notify"
 	"github.com/andreibanu/pusher/internal/pathtrace"
 	"github.com/andreibanu/pusher/internal/telemetry"
 	"github.com/andreibanu/pusher/internal/wifi"
@@ -167,6 +168,7 @@ var mainItems = []string{
 	"Update pusher",
 	"Exit",
 	"Count this device",
+	"Tell me about updates",
 }
 
 // Update satisfies tea.Model.
@@ -259,7 +261,7 @@ var mainSections = []menuSection{
 	{"Building and deploying", []int{6, 4, 5, 8}},
 	{"Reloading instead of installing", []int{9, 10}},
 	{"Extras", []int{optionalRow}},
-	{"Pusher itself", []int{11, 13}},
+	{"Pusher itself", []int{11, 14, 13}},
 	{"", []int{12}},
 }
 
@@ -353,6 +355,8 @@ func (m *SettingsModel) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case 13:
 			m.toggleTelemetry()
+		case 14:
+			m.toggleUpdateNotify()
 		}
 	}
 
@@ -763,6 +767,35 @@ func (m *SettingsModel) telemetryLabel() string {
 	return onOff(config.GetTelemetry())
 }
 
+func (m *SettingsModel) toggleUpdateNotify() {
+	enabling := !config.GetUpdateNotify()
+
+	if err := config.SetUpdateNotify(enabling); err != nil {
+		m.err = err
+		return
+	}
+
+	m.err = nil
+	if enabling {
+		m.status = "On: a desktop notification when a newer pusher is out"
+		return
+	}
+	m.status = "Off: pusher will not check for newer versions"
+}
+
+// updateNotifyLabel says what will happen, which is not the setting alone: a
+// machine with nowhere to deliver a notification is told so here rather than
+// left wondering why one never arrives.
+func (m *SettingsModel) updateNotifyLabel() string {
+	if !config.GetUpdateNotify() {
+		return "off"
+	}
+	if !notify.Enabled() {
+		return "on (no notifications here)"
+	}
+	return "on"
+}
+
 func (m *SettingsModel) viewMain() string {
 	values := []string{
 		m.defaultProfileLabel(),
@@ -779,6 +812,7 @@ func (m *SettingsModel) viewMain() string {
 		m.updateLabel(),
 		"",
 		m.telemetryLabel(),
+		m.updateNotifyLabel(),
 	}
 
 	list := m.layout()

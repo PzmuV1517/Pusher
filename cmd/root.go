@@ -9,6 +9,7 @@ import (
 	"github.com/andreibanu/pusher/internal/feature"
 	"github.com/andreibanu/pusher/internal/selfupdate"
 	"github.com/andreibanu/pusher/internal/telemetry"
+	"github.com/andreibanu/pusher/internal/updates"
 	"github.com/spf13/cobra"
 )
 
@@ -47,13 +48,16 @@ func Execute(version string) {
 
 	visualiseCmd.Hidden = !feature.Revealed()
 
-	// Started here so the request overlaps the command rather than following
-	// it, and finished after it so a short command still gets counted. Neither
-	// half can fail the run.
+	// Both started here so their requests overlap the command rather than
+	// following it, and finished after it so a short command still gets one.
+	// Neither can fail the run.
 	counted := telemetry.Start(version)
+	newer := updates.Watch()
 
 	err := rootCmd.Execute()
+
 	counted.Finish(pingWait)
+	newer.Finish(pingWait)
 
 	if err != nil {
 		os.Exit(1)
