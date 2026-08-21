@@ -336,3 +336,34 @@ func TestAARNameMatchesTheReleaseAssetContract(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// A branch release carries its label in the version, v1.8.0-RSTController.1,
+// which has to survive being written into the gradle file and read back out.
+// The AAR beside it is named after the same string, so a version that does not
+// round-trip is a file that cannot be found.
+func TestALabelledVersionRoundTrips(t *testing.T) {
+	const version = "v1.8.0-RSTController.1"
+
+	root := project(t, `dependencies {
+    implementation files('libs/blob-competition-v1.7.0.aar')
+}`)
+
+	if err := SetVersion(root, version); err != nil {
+		t.Fatal(err)
+	}
+
+	dep, err := Detect(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dep == nil {
+		t.Fatal("the dependency was not found after being written")
+	}
+	if dep.Version != version {
+		t.Errorf("version came back as %q, want %q", dep.Version, version)
+	}
+
+	if got := AARName(dep.Artifact, dep.Version); got != "blob-competition-"+version+".aar" {
+		t.Errorf("AAR name = %q, which is not what the release attaches", got)
+	}
+}

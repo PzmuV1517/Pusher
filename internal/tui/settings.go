@@ -38,6 +38,7 @@ const (
 	screenThreads
 	screenBlob
 	screenBlobRuns
+	screenBlobBranch
 	screenBlobToken
 	screenUpdate
 	screenDeploy
@@ -203,6 +204,13 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor, m.offset = 0, 0
 		return m, nil
 
+	case blobBranchMsg:
+		m.blob.branchBusy = false
+		m.blob.branches = msg.branches
+		m.blob.branchErr = msg.err
+		m.cursor, m.offset = 0, 0
+		return m, nil
+
 	case blobOpMsg:
 		m.blob.busy = false
 		m.err = msg.err
@@ -236,6 +244,8 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateBlob(key)
 	case screenBlobRuns:
 		return m.updateBlobRuns(key)
+	case screenBlobBranch:
+		return m.updateBlobBranch(key)
 	case screenBlobToken:
 		return m.updateBlobToken(key)
 	case screenUpdate:
@@ -692,6 +702,8 @@ func (m *SettingsModel) View() string {
 		b.WriteString(m.viewBlob())
 	case screenBlobRuns:
 		b.WriteString(m.viewBlobRuns())
+	case screenBlobBranch:
+		b.WriteString(m.viewBlobBranch())
 	case screenBlobToken:
 		b.WriteString(m.viewBlobToken())
 	case screenUpdate:

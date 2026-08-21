@@ -9,6 +9,13 @@ Anything not listed is in `git log`, which is the complete record.
 
 ## Unreleased
 
+- **The blob menu picks a release branch.** blob publishes branch work as a
+  labelled tag, `v1.8.0-RSTController.1`, which GitHub marks as a pre-release;
+  the label up to its first dot is the branch. **Release branch** lists the
+  branches that have releases and moves the project onto the newest one from
+  whichever you choose. **Version**, and the line a deploy prints, then follow
+  that branch rather than main.
+
 - **A newer pusher announces itself.** Once a day, in the background, pusher
   asks whether a newer release exists and says so with a desktop notification
   rather than a line that scrolls past the end of a deploy. macOS through

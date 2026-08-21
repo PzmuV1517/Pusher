@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/andreibanu/pusher/internal/blobrel"
 	"github.com/andreibanu/pusher/internal/updates"
 )
 
@@ -37,7 +38,15 @@ func announceBlob(check *updates.BlobCheck, wait time.Duration, leadingBlank boo
 		fmt.Println()
 	}
 
-	fmt.Printf("[*] blob %s is available; this project uses %s\n", blob.Latest, blob.Current)
+	// The branch is named when it is not main, because a build from somebody's
+	// branch is not the same news as a release, and the line would otherwise
+	// read like one.
+	from := ""
+	if blob.Branch != "" && blob.Branch != blobrel.MainBranch {
+		from = " on " + blob.Branch
+	}
+
+	fmt.Printf("[*] blob %s is available%s; this project uses %s\n", blob.Latest, from, blob.Current)
 	fmt.Println("    Update it in `pusher settings` -> blob library.")
 
 	return true

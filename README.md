@@ -127,11 +127,23 @@ check that cannot reach GitHub says nothing at all. Turn it off with
 only the notification.
 
 If your project uses the blob library, a deploy says when a newer release of it
-is out. Twice: once at the start, where it is still cheap to stop and take it,
+is out, on whichever branch you follow. Twice: once at the start, where it is still cheap to stop and take it,
 and once at the end, where it is the last thing on screen rather than something
 a minute of Gradle output scrolled past. The check runs beside the deploy rather
 than in front of it, and a project without blob, or a machine without access to
 the repository, is told nothing.
+
+**Release branch** in the blob menu chooses which of blob's branches this
+project follows. blob publishes branch work as a labelled tag,
+`v1.8.0-RSTController.1`, which GitHub marks as a pre-release, and the label up
+to its first dot is the branch. Pusher reads that out of the tag rather than
+asking which branch a release targets, because branches get deleted once merged
+while the releases made from them stay.
+
+Picking a branch moves the project onto the newest release from it, so it is one
+action rather than a setting that changes and a project that does not. **Version**
+then means the newest on that branch, and so does the line a deploy prints.
+Everything else is unchanged: same two builds, same asset names, same menu.
 
 ## Hardware configurations
 

@@ -48,6 +48,8 @@ type Config struct {
 	DashWatch bool `mapstructure:"dash_watch"`
 
 	UpdateNotify bool `mapstructure:"update_notify"`
+
+	BlobBranch string `mapstructure:"blob_branch"`
 }
 
 var (
@@ -97,6 +99,7 @@ func Initialize() error {
 	viper.SetDefault("extreme", false)
 	viper.SetDefault("dash_watch", false)
 	viper.SetDefault("update_notify", true)
+	viper.SetDefault("blob_branch", "main")
 	viper.SetDefault("telemetry", true)
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
@@ -142,6 +145,7 @@ func Save(cfg *Config) error {
 	viper.Set("extreme", cfg.Extreme)
 	viper.Set("dash_watch", cfg.DashWatch)
 	viper.Set("update_notify", cfg.UpdateNotify)
+	viper.Set("blob_branch", cfg.BlobBranch)
 
 	if err := viper.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
@@ -397,6 +401,27 @@ func SetUpdateNotify(enabled bool) error {
 		return err
 	}
 	cfg.UpdateNotify = enabled
+	return Save(cfg)
+}
+
+// GetBlobBranch is which of blob's branches this machine follows.
+//
+// Empty means main, so a config written before branches existed reads as the
+// branch it was already on rather than as nothing.
+func GetBlobBranch() string {
+	if branch := viper.GetString("blob_branch"); branch != "" {
+		return branch
+	}
+	return "main"
+}
+
+// SetBlobBranch chooses which branch's releases blob updates come from.
+func SetBlobBranch(branch string) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	cfg.BlobBranch = branch
 	return Save(cfg)
 }
 

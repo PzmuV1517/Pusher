@@ -26,6 +26,15 @@ func TestNoScreenOverflowsASmallTerminal(t *testing.T) {
 				{"deploy", func(m *SettingsModel) { m.screen = screenDeploy }},
 				{"extreme", func(m *SettingsModel) { m.screen = screenExtreme }},
 				{"update", func(m *SettingsModel) { m.screen = screenUpdate }},
+				{"blob", func(m *SettingsModel) { m.screen = screenBlob }},
+				{"blob branches", func(m *SettingsModel) {
+					m.screen = screenBlobBranch
+					m.blob.branches = []string{"main", "RSTController", "feedforward", "a-branch-with-a-very-long-name"}
+				}},
+				{"blob branches, still looking", func(m *SettingsModel) {
+					m.screen = screenBlobBranch
+					m.blob.branchBusy = true
+				}},
 			} {
 				m := &SettingsModel{height: height, width: width, confirmDeleteIndex: -1}
 				m.refreshProfiles()

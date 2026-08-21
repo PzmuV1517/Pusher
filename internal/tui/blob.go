@@ -8,6 +8,7 @@ import (
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/blobdep"
 	"github.com/andreibanu/pusher/internal/blobrel"
+	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/ghauth"
 	"github.com/andreibanu/pusher/internal/pathtrace"
 	"github.com/andreibanu/pusher/internal/visual"
@@ -23,8 +24,13 @@ type blobState struct {
 	checking bool
 	busy     bool
 
-	dep     *blobdep.Dep
-	latest  string
+	dep    *blobdep.Dep
+	latest string
+
+	branches   []string
+	branchErr  error
+	branchBusy bool
+
 	traces  []adb.RemoteTrace
 	serial  string
 	tracErr error
@@ -33,7 +39,7 @@ type blobState struct {
 }
 
 var (
-	blobItems        = []string{"Build variant", "Version", "GitHub token", "Recorded runs", "Back"}
+	blobItems        = []string{"Build variant", "Release branch", "Version", "GitHub token", "Recorded runs", "Back"}
 	blobMissingItems = []string{"Add blob to the project", "GitHub token", "Back"}
 	blobLockedItems  = []string{"GitHub token", "Back"}
 )
@@ -175,6 +181,9 @@ func (m *SettingsModel) chooseBlob(item string) (tea.Model, tea.Cmd) {
 	case "Build variant":
 		return m, m.switchVariant()
 
+	case "Release branch":
+		return m, m.enterBranches()
+
 	case "Version":
 		return m, m.bumpVersion()
 
@@ -243,9 +252,14 @@ func (m *SettingsModel) bumpVersion() tea.Cmd {
 	root, token := m.projectRoot(), m.blob.creds.Secret()
 	artifact, previous := m.blob.dep.Artifact, m.blob.dep.Version
 
+	// Newest on the branch this project follows, not newest overall. Updating
+	// somebody off their branch and onto main is not an update, it is undoing
+	// the choice they made in the entry above this one.
+	branch := config.GetBlobBranch()
+
 	m.blob.busy = true
 	return blobOp(func() (string, error) {
-		latest, err := blobrel.LatestTag(token)
+		latest, err := blobrel.LatestOn(token, branch)
 		if err != nil {
 			return "", err
 		}
@@ -268,9 +282,11 @@ func (m *SettingsModel) bumpVersion() tea.Cmd {
 func (m *SettingsModel) addBlob() tea.Cmd {
 	root, token := m.projectRoot(), m.blob.creds.Secret()
 
+	branch := config.GetBlobBranch()
+
 	m.blob.busy = true
 	return blobOp(func() (string, error) {
-		version, err := blobrel.LatestTag(token)
+		version, err := blobrel.LatestOn(token, branch)
 		if err != nil {
 
 			return "", err
@@ -414,6 +430,8 @@ func (m *SettingsModel) viewBlob() string {
 		switch item {
 		case "Build variant":
 			values[i] = m.blob.dep.VariantName()
+		case "Release branch":
+			values[i] = m.branchValue()
 		case "Version":
 			values[i] = m.versionValue()
 		case "GitHub token":
@@ -435,6 +453,25 @@ func (m *SettingsModel) viewBlob() string {
 
 	b.WriteString(helpStyle.Render("  "+fit("↑/↓ move · enter select · esc back", textWidth(m.width))) + "\n")
 	return b.String()
+}
+
+// branchValue says which branch this project follows, and whether the version
+// it is on came from somewhere else.
+//
+// Worth showing rather than assuming: a project can sit on a branch build long
+// after somebody switched the setting back, and the two disagreeing is exactly
+// when it matters.
+func (m *SettingsModel) branchValue() string {
+	branch := config.GetBlobBranch()
+
+	if m.blob.dep == nil || m.blob.dep.Version == "" {
+		return branch
+	}
+
+	if on := blobrel.Branch(m.blob.dep.Version); on != branch {
+		return branch + " (on " + on + ")"
+	}
+	return branch
 }
 
 func (m *SettingsModel) versionValue() string {
@@ -483,14 +520,155 @@ func (m *SettingsModel) viewBlobRuns() string {
 func (m *SettingsModel) blobLockedNotice() string {
 	var b strings.Builder
 
-	switch m.blob.auth {
-	case ghauth.Denied:
-		b.WriteString(errStyle.Render("  This token cannot read the blob repository.") + "\n")
-		b.WriteString(helpStyle.Render("  Ask for access, or set a token that has it.") + "\n\n")
-	default:
-		b.WriteString(helpStyle.Render("  blob is a private library. Using it needs a GitHub token with") + "\n")
-		b.WriteString(helpStyle.Render("  read access to the repository.") + "\n\n")
+	// Wrapped rather than fitted: this is a sentence somebody has to read to
+	// know what to do, and cutting it at the terminal's edge would take the
+	// instruction away with it.
+	notice := "blob is a private library. Using it needs a GitHub token with read access to the repository."
+	style := helpStyle
+
+	if m.blob.auth == ghauth.Denied {
+		notice = "This token cannot read the blob repository. Ask for access, or set a token that has it."
+		style = errStyle
 	}
 
+	for _, line := range wrap(notice, textWidth(m.width)) {
+		b.WriteString(style.Render("  "+line) + "\n")
+	}
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+// Switching branch is one action rather than two. Choosing a branch and being
+// left on the version from the last one would be a setting that changed and a
+// project that did not, which is the shape of every bug in this tool worth
+// having: something reported as done that has not happened yet.
+
+type blobBranchMsg struct {
+	branches []string
+	err      error
+}
+
+func (m *SettingsModel) enterBranches() tea.Cmd {
+	m.blob.branches = nil
+	m.blob.branchErr = nil
+	m.blob.branchBusy = true
+	m.goTo(screenBlobBranch, 0)
+
+	token := m.blob.creds.Secret()
+	return func() tea.Msg {
+		branches, err := blobrel.Branches(token)
+		return blobBranchMsg{branches: branches, err: err}
+	}
+}
+
+func (m *SettingsModel) updateBlobBranch(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc", "q", "left", "h":
+		m.goTo(screenBlob, 1)
+		m.status = ""
+
+	case "r":
+		return m, m.enterBranches()
+
+	case "up", "k":
+		m.moveCursor(-1, len(m.blob.branches))
+	case "down", "j":
+		m.moveCursor(1, len(m.blob.branches))
+
+	case "enter", " ":
+		if m.blob.branchBusy || len(m.blob.branches) == 0 {
+			return m, nil
+		}
+		return m, m.followBranch(m.blob.branches[m.cursor])
+	}
+
+	return m, nil
+}
+
+// followBranch records the choice and moves the project onto that branch's
+// newest release.
+func (m *SettingsModel) followBranch(branch string) tea.Cmd {
+	root, token := m.projectRoot(), m.blob.creds.Secret()
+
+	var artifact, previous string
+	if m.blob.dep != nil {
+		artifact, previous = m.blob.dep.Artifact, m.blob.dep.Version
+	}
+
+	m.blob.busy = true
+	m.goTo(screenBlob, 1)
+
+	return blobOp(func() (string, error) {
+		if err := config.SetBlobBranch(branch); err != nil {
+			return "", err
+		}
+
+		latest, err := blobrel.LatestOn(token, branch)
+		if err != nil {
+			return "", err
+		}
+
+		if artifact == "" {
+			return "Following " + branch + ". Newest there is " + latest, nil
+		}
+		if latest == previous {
+			return "Following " + branch + ", already on " + latest, nil
+		}
+
+		if err := ensureLibrary(root, token, artifact, latest); err != nil {
+			return "", err
+		}
+		if err := blobdep.SetVersion(root, latest); err != nil {
+			return "", err
+		}
+		blobdep.Prune(root, artifact, latest)
+
+		return fmt.Sprintf("Following %s: %s to %s. Gradle sync to pick it up.",
+			branch, previous, latest), nil
+	})
+}
+
+func (m *SettingsModel) viewBlobBranch() string {
+	var b strings.Builder
+
+	b.WriteString(helpStyle.Render("  "+fit("Which of blob's branches this project follows.", textWidth(m.width))) + "\n")
+	b.WriteString(helpStyle.Render("  "+fit("Choosing one moves the project to the newest release from it.", textWidth(m.width))) + "\n\n")
+
+	switch {
+	case m.blob.branchBusy:
+		b.WriteString(helpStyle.Render("  Looking...") + "\n")
+		b.WriteString("\n" + helpStyle.Render("  "+fit("esc back", textWidth(m.width))) + "\n")
+		return b.String()
+
+	case m.blob.branchErr != nil:
+		for _, line := range strings.Split(m.blob.branchErr.Error(), "\n") {
+			b.WriteString(errStyle.Render("  "+fit(line, textWidth(m.width))) + "\n")
+		}
+		b.WriteString("\n" + helpStyle.Render("  "+fit("r retry · esc back", textWidth(m.width))) + "\n")
+		return b.String()
+
+	case len(m.blob.branches) == 0:
+		b.WriteString(helpStyle.Render("  "+fit("No releases at all, so there is nothing to follow.", textWidth(m.width))) + "\n")
+		b.WriteString("\n" + helpStyle.Render("  "+fit("r retry · esc back", textWidth(m.width))) + "\n")
+		return b.String()
+	}
+
+	current := config.GetBlobBranch()
+
+	b.WriteString(m.renderList(len(m.blob.branches), func(i int) string {
+		name := m.blob.branches[i]
+
+		value := ""
+		if name == current {
+			value = "following"
+		} else if name != blobrel.MainBranch {
+			value = "branch work"
+		}
+
+		return renderRow(i == m.cursor, name, value, 29, m.width)
+	}))
+
+	b.WriteString("\n" + helpStyle.Render("  "+fit("enter follow · r refresh · esc back", textWidth(m.width))) + "\n")
 	return b.String()
 }

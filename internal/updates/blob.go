@@ -5,6 +5,7 @@ import (
 
 	"github.com/andreibanu/pusher/internal/blobdep"
 	"github.com/andreibanu/pusher/internal/blobrel"
+	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/ghauth"
 )
 
@@ -12,6 +13,10 @@ import (
 type Blob struct {
 	Current string
 	Latest  string
+
+	// Branch is the work these came from, which is worth saying when it is not
+	// main: an update from a branch is not the same news as a stable release.
+	Branch string
 }
 
 // Newer reports whether there is something to update to.
@@ -55,7 +60,13 @@ func WatchBlob(root string) *BlobCheck {
 			return
 		}
 
-		if tag, err := blobrel.LatestTag(creds.Secret()); err == nil {
+		// The branch somebody chose, not whatever is newest overall. Following a
+		// branch and being told about main would be an update that undoes the
+		// choice rather than one that follows it.
+		branch := config.GetBlobBranch()
+		c.result.Branch = branch
+
+		if tag, err := blobrel.LatestOn(creds.Secret(), branch); err == nil {
 			c.result.Latest = tag
 		}
 	}()
