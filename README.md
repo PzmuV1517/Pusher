@@ -178,12 +178,38 @@ TeleOP, 42s
   battery                13.40V down to 11.20V, a sag of 2.20V
 ```
 
-Which turns "the battery keeps dying" into a name and a number. Motors are
-ranked by peak, since that is the one that trips breakers and sags the battery,
-and the moment it happened is there so it can be matched against what the robot
-was doing. The hub is reported separately rather than ranked beside the motors:
-its reading is everything plugged into it, so it would win every list and tell
-you nothing.
+Which turns "the battery keeps dying" into a name and a number.
+
+**Power readings** in `pusher settings` lists every run on the robot and opens
+any of them as a page, in the same style as the path visualiser. The graph is
+meant to be worked: drag across it to zoom in like an oscilloscope, double-click
+to zoom out, click a name in the legend to take that line out of the way, and
+move across it to read every value at that instant. The battery graph follows
+the same window, because the question after seeing a spike is always what the
+battery did at that moment.
+
+The table ranks by **charge** rather than peak. Peak is what trips breakers;
+charge is what flattens the battery, and a motor sitting at 4 A all match beats
+a 20 A spike that lasts a tenth of a second. Both numbers are there.
+
+### What can and cannot be measured
+
+Only two things on an FTC robot report current: motors, and the hub. There is no
+per-servo or per-sensor current sensing in the hardware, so:
+
+- **Motors** are measured individually.
+- **The servo bus** and **the I2C bus** get one number each, from the hub. That
+  is everything the hardware can say about servos and I2C sensors.
+- **The hub's own reading** is everything plugged into it, which is why it is
+  listed apart from the motors rather than ranked beside them.
+- **A Limelight cannot report current at all.** It is not on a rail the hub
+  measures, so what it draws is inside the hub's total and nowhere else. It is
+  reported as how hard it is working, which is the nearest thing there is.
+
+**Sample rate** chooses how often everything is read, from 20 ms to 500 ms. It
+is the entire cost of the feature, so pick it deliberately. The value is baked
+into the generated file, because the robot cannot read this laptop's settings,
+so changing it rewrites the monitor and needs a deploy.
 
 ### It costs loop time, and is not for matches
 

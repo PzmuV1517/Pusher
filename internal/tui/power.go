@@ -18,9 +18,6 @@ type powerState struct {
 
 	serial string
 	runs   []power.Recording
-
-	report power.Report
-	shown  bool
 }
 
 type powerListMsg struct {
@@ -30,8 +27,8 @@ type powerListMsg struct {
 }
 
 type powerReportMsg struct {
-	report power.Report
-	err    error
+	path string
+	err  error
 }
 
 func (m *SettingsModel) enterPower() tea.Cmd {
@@ -55,7 +52,12 @@ func (m *SettingsModel) openRun(rec power.Recording) tea.Cmd {
 
 	return func() tea.Msg {
 		report, err := power.Read(serial, rec)
-		return powerReportMsg{report: report, err: err}
+		if err != nil {
+			return powerReportMsg{err: err}
+		}
+
+		path, err := report.Render("")
+		return powerReportMsg{path: path, err: err}
 	}
 }
 
@@ -80,15 +82,6 @@ func (m *SettingsModel) updatePower(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.openRun(m.power.runs[m.cursor])
 	}
 
-	return m, nil
-}
-
-func (m *SettingsModel) updatePowerReport(key tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch key.String() {
-	case "esc", "q", "left", "h":
-		m.power.shown = false
-		m.goTo(screenPower, m.cursor)
-	}
 	return m, nil
 }
 
@@ -132,29 +125,6 @@ func (m *SettingsModel) viewPower() string {
 		return renderRow(i == m.cursor, run.OpMode, run.When.Format("15:04:05"), 29, m.width)
 	}))
 
-	b.WriteString("\n" + helpStyle.Render("  "+fit("enter open · r refresh · esc back", textWidth(m.width))) + "\n")
-	return b.String()
-}
-
-func (m *SettingsModel) viewPowerReport() string {
-	var b strings.Builder
-
-	if m.power.err != nil {
-		for _, line := range wrap(m.power.err.Error(), textWidth(m.width)) {
-			b.WriteString(errStyle.Render("  "+line) + "\n")
-		}
-		b.WriteString("\n" + helpStyle.Render("  "+fit("esc back", textWidth(m.width))) + "\n")
-		return b.String()
-	}
-
-	lines := m.power.report.Lines()
-
-	b.WriteString(titleStyle.Render("  "+fit(m.power.report.Title(), textWidth(m.width))) + "\n\n")
-
-	b.WriteString(m.renderList(len(lines), func(i int) string {
-		return "  " + fit(lines[i], textWidth(m.width)) + "\n"
-	}))
-
-	b.WriteString("\n" + helpStyle.Render("  "+fit("esc back", textWidth(m.width))) + "\n")
+	b.WriteString("\n" + helpStyle.Render("  "+fit("enter opens it in a browser · r refresh · esc back", textWidth(m.width))) + "\n")
 	return b.String()
 }

@@ -21,9 +21,47 @@ Anything not listed is in `git log`, which is the complete record.
   every reading is its own round trip over the bus, and pusher says so on every
   deploy while the monitor is installed. **Not for use in an official match.**
 
-- **Power readings** in `pusher settings` lists the runs on the robot and shows
-  any of them, rather than only the newest. Each run is its own recording, named
-  by OpMode and time so two runs of the same OpMode are told apart.
+- **Power readings** in `pusher settings` lists the runs on the robot and opens
+  any of them as a page, the way the path visualiser does, in the same style.
+  Current against time for every motor and their sum, battery voltage against
+  time, and a table ranked by charge drawn rather than by peak, since a motor
+  that pulls 20 A for a tenth of a second costs the battery far less than one
+  sitting at 4 A all match. Each run is its own recording, named by OpMode and
+  time so two runs of the same OpMode are told apart.
+
+  The graph is worked rather than looked at: drag across it to zoom in like an
+  oscilloscope, double-click to zoom back out, click a name to take that line
+  out of the way, and the battery graph follows the same window because the
+  question after seeing a spike is always what the battery did at that moment.
+  Moving across it reads out every value at that instant. All of it is inline,
+  so the page still works on a laptop with no route anywhere.
+
+  The monitor now keeps every reading rather than only the totals, which is what
+  makes the graphs possible. Added as lines an older pusher skips, so recordings
+  stay readable both ways. `pusher power` opens the newest; `--text` prints the
+  numbers instead.
+
+- **Everything the hardware can measure, not just motors.** The hub reports two
+  more rails, and both are now recorded: the servo bus and the I2C bus. Neither
+  servos nor I2C sensors have current sensing of their own, so one number each
+  is all there is, and it is more than nothing. A Limelight is reported too, as
+  how hard it is working rather than what it draws: it is not on a rail the hub
+  measures, so its draw is inside the hub's total and nowhere else. It is found
+  by name through reflection, so the generated file still compiles for a team on
+  an SDK that has never heard of one.
+
+- **Sample rate** in `pusher settings` chooses how often the monitor reads,
+  from 20 ms to 500 ms. It is the whole cost of the feature, so the menu says
+  what each rate costs rather than presenting them as equivalent. The value is
+  baked into the generated file, since the robot cannot read this laptop's
+  settings, so changing it rewrites the monitor and wants a deploy.
+
+- **Changing the blob library forces a full install.** Adding, removing or
+  swapping an AAR changes what the APK contains, and a reload only ever carries
+  team code. Pusher worked that out for itself from the build inputs, but only
+  once it had seen the robot: a library swapped in the menu with no robot
+  connected left the next deploy reloading against the jar that was there
+  before. It now says so up front and installs.
 
 - When the monitor records nothing it leaves a note on the robot saying why, and
   `pusher power` shows the note instead of an empty directory. The log would

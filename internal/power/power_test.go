@@ -3,6 +3,7 @@ package power
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -228,7 +229,7 @@ func TestExtremeKeepsTheMonitorInTheAPK(t *testing.T) {
 // The path the robot writes to and the path pusher reads from are two constants
 // in two languages, and nothing else makes them agree.
 func TestTheRecordingPathAgreesWithTheGeneratedSource(t *testing.T) {
-	if !strings.Contains(source, `"`+RecordingDir+`"`) {
+	if !strings.Contains(sourceFor(100), `"`+RecordingDir+`"`) {
 		t.Errorf("the monitor does not write to %s, which is where pusher looks", RecordingDir)
 	}
 }
@@ -306,5 +307,68 @@ func TestProblemFilesAreMarkedInAListing(t *testing.T) {
 	}
 	if bad.Label() != "problem" {
 		t.Errorf("a problem note is labelled %q", bad.Label())
+	}
+}
+
+// The page is the feature now, so it has to survive a report that has no series
+// in it, a problem note, and a run with nothing but a hub.
+func TestThePageRendersWhateverItIsGiven(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"aggregates only, no series", recording},
+		{"a problem note", "pusher-power-problem 1\nCould not attach.\n"},
+		{"a hub and nothing else", "pusher-power 1\nopmode X\nseconds 1\nperiod 100\n" +
+			"device Control_Hub hub 10 1.0000 2.0000 0.500 0\n"},
+	} {
+		report, err := Parse(tc.body)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+
+		out := filepath.Join(t.TempDir(), "page.html")
+		if _, err := report.Render(out); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+
+		page, err := os.ReadFile(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// No network. This opens on a laptop that may be on a robot's Wi-Fi
+		// with no route anywhere, so a page that fetches anything renders as an
+		// empty box. Inline script is fine and is how the graph is worked; it
+		// is the fetching that cannot happen, not the scripting.
+		for _, forbidden := range []string{"http://", "https://", "src=", "@import"} {
+			if strings.Contains(string(page), forbidden) {
+				t.Errorf("%s: the page references %q, which will not load off a robot network", tc.name, forbidden)
+			}
+		}
+		if !strings.Contains(string(page), "<html") {
+			t.Errorf("%s: that is not a page", tc.name)
+		}
+	}
+}
+
+// The period is baked into the generated file, so the file is the only place it
+// can disagree with the setting.
+func TestThePeriodIsBakedIn(t *testing.T) {
+	for _, ms := range []int{20, 100, 500} {
+		out := sourceFor(ms)
+
+		want := "PERIOD_MS = " + strconv.Itoa(ms) + ";"
+		if !strings.Contains(out, want) {
+			t.Errorf("sourceFor(%d) does not contain %q", ms, want)
+		}
+		if strings.Contains(out, "%PERIOD%") {
+			t.Errorf("sourceFor(%d) left the placeholder in", ms)
+		}
+	}
+
+	// Nonsense falls back rather than generating a monitor that spins.
+	if !strings.Contains(sourceFor(0), "PERIOD_MS = 100;") {
+		t.Error("a period of zero did not fall back to the default")
 	}
 }

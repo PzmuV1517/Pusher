@@ -50,6 +50,10 @@ type Config struct {
 	UpdateNotify bool `mapstructure:"update_notify"`
 
 	BlobBranch string `mapstructure:"blob_branch"`
+
+	PowerPeriod int `mapstructure:"power_period_ms"`
+
+	ForceInstall bool `mapstructure:"force_install"`
 }
 
 var (
@@ -100,6 +104,8 @@ func Initialize() error {
 	viper.SetDefault("dash_watch", false)
 	viper.SetDefault("update_notify", true)
 	viper.SetDefault("blob_branch", "main")
+	viper.SetDefault("power_period_ms", 100)
+	viper.SetDefault("force_install", false)
 	viper.SetDefault("telemetry", true)
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
@@ -146,6 +152,8 @@ func Save(cfg *Config) error {
 	viper.Set("dash_watch", cfg.DashWatch)
 	viper.Set("update_notify", cfg.UpdateNotify)
 	viper.Set("blob_branch", cfg.BlobBranch)
+	viper.Set("power_period_ms", cfg.PowerPeriod)
+	viper.Set("force_install", cfg.ForceInstall)
 
 	if err := viper.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
@@ -422,6 +430,46 @@ func SetBlobBranch(branch string) error {
 		return err
 	}
 	cfg.BlobBranch = branch
+	return Save(cfg)
+}
+
+// GetForceInstall reports whether the next deploy has to install rather than
+// reload, whatever else it thinks.
+//
+// Set when something changes that a reload cannot carry, and read on the next
+// deploy wherever that happens. It lives here rather than on the robot because
+// the changes that set it are made in a menu, with no robot connected to tell.
+func GetForceInstall() bool {
+	return viper.GetBool("force_install")
+}
+
+// SetForceInstall marks the next deploy as needing a full install.
+func SetForceInstall(force bool) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	cfg.ForceInstall = force
+	return Save(cfg)
+}
+
+// GetPowerPeriod is how often the power monitor reads every device, in
+// milliseconds. It is the whole cost of the feature, so it is worth choosing.
+func GetPowerPeriod() int {
+	period := viper.GetInt("power_period_ms")
+	if period <= 0 {
+		return 100
+	}
+	return period
+}
+
+// SetPowerPeriod changes how often the monitor reads.
+func SetPowerPeriod(ms int) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	cfg.PowerPeriod = ms
 	return Save(cfg)
 }
 

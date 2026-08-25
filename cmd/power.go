@@ -9,7 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var powerClear bool
+var (
+	powerClear bool
+	powerText  bool
+)
 
 var powerCmd = &cobra.Command{
 	Use:   "power",
@@ -25,6 +28,7 @@ run this. It costs loop time and is not for use in a match.`,
 
 func init() {
 	powerCmd.Flags().BoolVar(&powerClear, "clear", false, "Delete the recordings from the robot")
+	powerCmd.Flags().BoolVar(&powerText, "text", false, "Print the numbers instead of opening a page")
 }
 
 func runPower(cmd *cobra.Command, args []string) error {
@@ -55,7 +59,31 @@ func runPower(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	printPowerReport(report, len(recordings))
+	if powerText {
+		printPowerReport(report, len(recordings))
+		return nil
+	}
+
+	page, err := report.Render("")
+	if err != nil {
+		return err
+	}
+	power.Open(page)
+
+	// A line in the terminal as well as the page. The page is the answer, but
+	// somebody who ran this to check one number should not have to look at a
+	// browser to get it.
+	fmt.Printf("\n[OK] %s\n", report.Title())
+	if motors := report.Motors(); len(motors) > 0 {
+		fmt.Printf("     %s peaked highest at %.2fA\n", motors[0].Name, motors[0].Peak)
+	}
+	fmt.Printf("     %s\n", page)
+
+	if len(recordings) > 1 {
+		fmt.Printf("     %d recordings on the robot; this is the newest.\n", len(recordings))
+		fmt.Println("     `pusher settings` -> Power readings opens any of them.")
+	}
+
 	return nil
 }
 

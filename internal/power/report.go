@@ -39,6 +39,14 @@ type Report struct {
 	Problem bool
 	Note    string
 
+	// Cameras are what the monitor could learn about anything that draws power
+	// without being on a rail the hub measures. See Camera.
+	Cameras []Camera
+
+	// Series is every reading, for drawing. Empty on a recording written before
+	// the monitor kept them, which is why nothing here depends on it.
+	Series Series
+
 	Devices []Device
 }
 
@@ -99,6 +107,30 @@ func Parse(content string) (Report, error) {
 				out.Devices = append(out.Devices, device)
 			}
 
+		case "limelight":
+			if len(fields) > 4 {
+				connected, _ := strconv.ParseFloat(fields[2], 64)
+				fps, _ := strconv.ParseFloat(fields[3], 64)
+				cpu, _ := strconv.ParseFloat(fields[4], 64)
+				out.Cameras = append(out.Cameras, Camera{
+					Name: fields[1], Connected: connected, FPS: fps, CPU: cpu,
+				})
+			}
+
+		case "series":
+			out.Series.Names = fields[1:]
+			out.Series.Amps = make([][]float64, len(out.Series.Names))
+
+		case "truncated":
+			if len(fields) > 2 {
+				kept, _ := strconv.Atoi(fields[1])
+				total, _ := strconv.Atoi(fields[2])
+				out.Series.Dropped = total - kept
+			}
+
+		case "s":
+			readSample(&out.Series, fields)
+
 		default:
 			// Everything after a problem header is the explanation.
 			if out.Problem {
@@ -129,6 +161,87 @@ func Parse(content string) (Report, error) {
 	})
 
 	return out, nil
+}
+
+// Camera is a Limelight, and is deliberately not a current reading.
+//
+// It is not on a rail the hub can measure, so whatever it draws is inside the
+// hub's total and nowhere else. What it can say is how hard it is working,
+// which is the closest thing to a power figure available for it.
+type Camera struct {
+	Name string
+
+	// Connected is the percentage of the run it answered for.
+	Connected float64
+	FPS       float64
+	CPU       float64
+}
+
+// Series is every reading, lined up on one clock.
+type Series struct {
+	Names []string
+	Times []float64
+	Volts []float64
+
+	// Amps is one row per device, in the order Names gives them.
+	Amps [][]float64
+
+	// Dropped is how many ticks were taken but not kept, when a run went on
+	// longer than the monitor holds.
+	Dropped int
+}
+
+// Any reports whether there is anything to draw.
+func (s Series) Any() bool { return len(s.Times) > 1 && len(s.Amps) > 0 }
+
+// Of is one device's readings, by name.
+func (s Series) Of(name string) []float64 {
+	for i, n := range s.Names {
+		if n == name && i < len(s.Amps) {
+			return s.Amps[i]
+		}
+	}
+	return nil
+}
+
+// Charge is how much charge a device drew over the run, in amp-seconds.
+//
+// The integral rather than the peak, which is a different question and often a
+// different answer: a motor that pulls 20A for a tenth of a second costs the
+// battery far less than one sitting at 4A all match.
+func (s Series) Charge(name string) float64 {
+	amps := s.Of(name)
+	if len(amps) < 2 || len(s.Times) < 2 {
+		return 0
+	}
+
+	var total float64
+	for i := 1; i < len(amps) && i < len(s.Times); i++ {
+		dt := s.Times[i] - s.Times[i-1]
+		if dt > 0 && dt < 5 {
+			total += (amps[i] + amps[i-1]) / 2 * dt
+		}
+	}
+	return total
+}
+
+// Combined is every motor's draw added up at each tick, which is the load the
+// battery actually saw.
+func (s Series) Combined(motors []Device) []float64 {
+	if !s.Any() {
+		return nil
+	}
+
+	out := make([]float64, len(s.Times))
+	for _, d := range motors {
+		amps := s.Of(d.Name)
+		for i := range out {
+			if i < len(amps) {
+				out[i] += amps[i]
+			}
+		}
+	}
+	return out
 }
 
 // device <name> <kind> <samples> <mean> <peak> <peakAt> <failures>
@@ -169,6 +282,30 @@ func parseDevice(fields []string) (Device, bool) {
 	}
 
 	return out, true
+}
+
+// s <time> <volts> <amps...>
+func readSample(into *Series, fields []string) {
+	if len(fields) < 3 || len(into.Names) == 0 {
+		return
+	}
+
+	at, err := strconv.ParseFloat(fields[1], 64)
+	if err != nil {
+		return
+	}
+	volts, _ := strconv.ParseFloat(fields[2], 64)
+
+	into.Times = append(into.Times, at)
+	into.Volts = append(into.Volts, volts)
+
+	for i := range into.Names {
+		var amps float64
+		if i+3 < len(fields) {
+			amps, _ = strconv.ParseFloat(fields[i+3], 64)
+		}
+		into.Amps[i] = append(into.Amps[i], amps)
+	}
 }
 
 // Motors are the readings from motors alone.

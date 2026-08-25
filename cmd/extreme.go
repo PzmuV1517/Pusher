@@ -26,6 +26,14 @@ func tryExtreme(gradlePath, serial, apkPath string) (bool, error) {
 		return false, nil
 	}
 
+	// Asked before the signature, because this is the case the signature cannot
+	// see: a library swapped in a menu with no robot connected leaves the robot
+	// agreeing with a signature taken before the swap.
+	if config.GetForceInstall() {
+		fmt.Println("\n[*] Pusher Extreme is on, but installing this time: the library changed, which a reload cannot carry")
+		return false, nil
+	}
+
 	state := extreme.Status(project.Root, serial, apkPath)
 	if !state.Usable() {
 		fmt.Printf("\n[*] Pusher Extreme is on, but installing this time: %s\n", state.Reason)
@@ -98,6 +106,11 @@ func recordExtremeState(serial string) {
 
 	if signature, err := extreme.Signature(project.Root); err == nil {
 		extreme.RecordSignature(serial, signature)
+	}
+
+	// The install has happened, so whatever needed one has been carried.
+	if config.GetForceInstall() {
+		_ = config.SetForceInstall(false)
 	}
 }
 

@@ -198,6 +198,17 @@ func (m *SettingsModel) chooseBlob(item string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// libraryChanged marks the next deploy as a full install.
+//
+// Adding, removing or swapping an AAR changes what the APK contains, and a
+// reload only ever carries team code. Pusher works that out for itself from the
+// build inputs, but only once it has seen the robot: this says so up front, so
+// the deploy after a library change is never the one that quietly reloads
+// against the old jar.
+func libraryChanged() {
+	_ = config.SetForceInstall(true)
+}
+
 func ensureLibrary(root, token, artifact, version string) error {
 	if tracked := blobdep.TrackedAARs(root); len(tracked) > 0 {
 		return fmt.Errorf("git is already tracking %s.\n"+
@@ -239,6 +250,7 @@ func (m *SettingsModel) switchVariant() tea.Cmd {
 		if err := blobdep.SetArtifact(root, target); err != nil {
 			return "", err
 		}
+		libraryChanged()
 		blobdep.Prune(root, target, version)
 
 		if target == blobdep.ArtifactDev {
@@ -273,6 +285,7 @@ func (m *SettingsModel) bumpVersion() tea.Cmd {
 		if err := blobdep.SetVersion(root, latest); err != nil {
 			return "", err
 		}
+		libraryChanged()
 		blobdep.Prune(root, artifact, latest)
 
 		return fmt.Sprintf("Updated %s to %s. Gradle sync to pick it up.", previous, latest), nil
@@ -298,6 +311,7 @@ func (m *SettingsModel) addBlob() tea.Cmd {
 		if err := blobdep.Add(root, blobdep.ArtifactComp, version); err != nil {
 			return "", err
 		}
+		libraryChanged()
 
 		return fmt.Sprintf("Added blob %s (competition build) to TeamCode/libs. Gradle sync to pick it up.", version), nil
 	})
@@ -622,6 +636,7 @@ func (m *SettingsModel) followBranch(branch string) tea.Cmd {
 		if err := blobdep.SetVersion(root, latest); err != nil {
 			return "", err
 		}
+		libraryChanged()
 		blobdep.Prune(root, artifact, latest)
 
 		return fmt.Sprintf("Following %s: %s to %s. Gradle sync to pick it up.",

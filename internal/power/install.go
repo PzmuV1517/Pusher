@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/extreme"
 )
 
@@ -62,7 +63,7 @@ func Install(root string) error {
 	if err := os.MkdirAll(Dir(root), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(sourceFor(config.GetPowerPeriod())), 0o644); err != nil {
 		return fmt.Errorf("cannot write %s: %w", path, err)
 	}
 
