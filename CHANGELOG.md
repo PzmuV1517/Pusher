@@ -9,17 +9,9 @@ Anything not listed is in `git log`, which is the complete record.
 
 ## Unreleased
 
-- **`pusher power` shows what drew the most current.** Turn the monitor on in
-  `pusher settings` -> Power monitor, deploy, drive, and it reports peak and
-  average draw per motor, the hub's total, and how far the battery sagged,
-  ranked worst first, with the moment each peak happened. The monitor is one
-  generated file that attaches itself through the same `@OnCreateEventLoop`
-  hook FtcDashboard uses, so no OpMode changes and nothing to remember before a
-  practice run.
+Nothing yet.
 
-  It costs loop time. A motor's current cannot be read in a bulk transfer, so
-  every reading is its own round trip over the bus, and pusher says so on every
-  deploy while the monitor is installed. **Not for use in an official match.**
+## 1.2.25
 
 - **Power readings** in `pusher settings` lists the runs on the robot and opens
   any of them as a page, the way the path visualiser does, in the same style.
@@ -62,6 +54,20 @@ Anything not listed is in `git log`, which is the complete record.
   once it had seen the robot: a library swapped in the menu with no robot
   connected left the next deploy reloading against the jar that was there
   before. It now says so up front and installs.
+
+## 1.2.24
+
+- **`pusher power` shows what drew the most current.** Turn the monitor on in
+  `pusher settings` -> Power monitor, deploy, drive, and it reports peak and
+  average draw per motor, the hub's total, and how far the battery sagged,
+  ranked worst first, with the moment each peak happened. The monitor is one
+  generated file that attaches itself through the same `@OnCreateEventLoop`
+  hook FtcDashboard uses, so no OpMode changes and nothing to remember before a
+  practice run.
+
+  It costs loop time. A motor's current cannot be read in a bulk transfer, so
+  every reading is its own round trip over the bus, and pusher says so on every
+  deploy while the monitor is installed. **Not for use in an official match.**
 
 - When the monitor records nothing it leaves a note on the robot saying why, and
   `pusher power` shows the note instead of an empty directory. The log would
