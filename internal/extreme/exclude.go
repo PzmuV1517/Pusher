@@ -160,6 +160,26 @@ func kotlinTasks(block string) string {
 ` + block
 }
 
+// PowerPackage is the generated power monitor, which has to stay in the APK.
+//
+// Its entry point is a startup hook the robot controller calls when the web
+// server comes up. Reloaded classes are scanned long after that has happened,
+// so a monitor that is not in the APK is collected and never called: it would
+// sit there looking installed and measure nothing.
+const PowerPackage = TeamPackage + "/pusherpower"
+
+// alwaysKept is what has to be in the APK whatever the keep list says, when it
+// is in the project at all.
+func alwaysKept(root string) []string {
+	var out []string
+
+	if _, err := os.Stat(filepath.Join(root, SourceRoot, filepath.FromSlash(PowerPackage))); err == nil {
+		out = append(out, PowerPackage)
+	}
+
+	return out
+}
+
 // isClassEntry reports whether a keep entry names one class rather than a
 // package.
 //
@@ -272,7 +292,7 @@ func Exclude(root string, keep ...string) error {
 		return err
 	}
 
-	keep = Closure(root, keep)
+	keep = Closure(root, append(keep, alwaysKept(root)...))
 
 	path := GradleFile(root)
 

@@ -104,6 +104,7 @@ Requires `adb` and an FTC project with a Gradle wrapper.
 | `pusher hwconfig` | Pull, edit and push the robot's hardware configs |
 | `pusher doctor` | Diagnose Wi-Fi, adb and project problems |
 | `pusher visualiser <OpMode>` | Draw the path an auto drove, coloured by speed |
+| `pusher power` | Show what drew the most current on the last run |
 | `pusher prepare` | Cache Gradle dependencies while online |
 | `pusher help` | Help |
 
@@ -144,6 +145,87 @@ Picking a branch moves the project onto the newest release from it, so it is one
 action rather than a setting that changes and a project that does not. **Version**
 then means the newest on that branch, and so does the line a deploy prints.
 Everything else is unchanged: same two builds, same asset names, same menu.
+
+## What is drawing the current
+
+Turn **Power monitor** on in `pusher settings`, deploy, drive, stop the OpMode,
+then look at what it recorded. Every run is its own file, so a practice session
+leaves one per run, newest first:
+
+```
+  One run each, newest first.
+
+   TeleOP                       15:31:57
+ > TeleOP                       15:24:57
+   TeleOP                       15:19:57
+   CloseBlue                    15:02:57
+```
+
+**Power readings** in `pusher settings` opens that list and shows any of them.
+`pusher power` prints the newest without opening a menu:
+
+```
+TeleOP, 42s
+─────────────────────────────────────────
+  motor                    peak  average   peak at
+  shooter                21.70A    6.50A     30.1s
+  left_front              8.40A    2.10A     12.3s
+  right_front             7.90A    2.00A     12.1s
+  intake                  5.20A    1.40A      8.0s
+
+                         12.00A drawn by the motors together, on average
+  Control_Hub (hub)      33.50A peak, 14.20A average
+  battery                13.40V down to 11.20V, a sag of 2.20V
+```
+
+Which turns "the battery keeps dying" into a name and a number. Motors are
+ranked by peak, since that is the one that trips breakers and sags the battery,
+and the moment it happened is there so it can be matched against what the robot
+was doing. The hub is reported separately rather than ranked beside the motors:
+its reading is everything plugged into it, so it would win every list and tell
+you nothing.
+
+### It costs loop time, and is not for matches
+
+**Do not run this in an official match.** A motor's current cannot be read in a
+bulk transfer: the bulk packet carries an over-current flag but not the value,
+so every reading is its own round trip over the RS485 bus. Reading eight motors
+ten times a second is eighty round trips a second that your robot was not making
+before, and they compete with the ones your OpMode makes.
+
+Sampling runs on its own thread rather than in your loop, and at 10Hz rather
+than every iteration, so the cost is as small as it can be made. It is not zero.
+Pusher says so on **every** deploy while the monitor is installed, because the
+way this goes wrong is somebody turning it on during practice and forgetting:
+
+```
+[!] The power monitor is installed, so this build reads motor current
+    while every OpMode runs. That costs loop time: a motor's current
+    cannot be bulk read, so each reading is its own trip over the bus.
+    Turn it off in `pusher settings` before an official match.
+```
+
+### How it works
+
+Turning it on writes one generated file into your project, under a
+`pusherpower` package, and turning it off deletes it. Nothing else in your
+project changes: no library, no dependency, and no edits to your OpModes.
+
+It attaches itself. The file carries a `@WebHandlerRegistrar` method, which the
+robot controller calls once at startup, and from there it listens for OpModes
+starting and stopping. That is the same hook FtcDashboard uses to attach, which
+is the reason to trust it. Your OpModes do not know it exists, so there is
+nothing to remember before a practice run and nothing to take out afterwards
+except the toggle.
+
+Readings are held in memory and written once when the OpMode stops, to
+`/sdcard/FIRST/pusher-power`, which is where `pusher power` reads them from.
+`pusher power --clear` deletes them.
+
+With Pusher Extreme set up, the monitor is kept in the APK rather than reloaded.
+It has to be: the startup hook is called when the robot controller's web server
+comes up, long before anything is reloaded, so a monitor that arrived in a
+reload would be found and never called. Pusher adds it to the keep list itself.
 
 ## Hardware configurations
 

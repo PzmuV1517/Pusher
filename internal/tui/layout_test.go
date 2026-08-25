@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/andreibanu/pusher/internal/power"
 	"strings"
 	"testing"
 
@@ -30,6 +31,21 @@ func TestNoScreenOverflowsASmallTerminal(t *testing.T) {
 				{"blob branches", func(m *SettingsModel) {
 					m.screen = screenBlobBranch
 					m.blob.branches = []string{"main", "RSTController", "feedforward", "a-branch-with-a-very-long-name"}
+				}},
+				{"power runs", func(m *SettingsModel) {
+					m.screen = screenPower
+					m.power.runs = []power.Recording{
+						{Name: "TeleOP-1756089600000.txt", OpMode: "TeleOP"},
+						{Name: "AVeryLongAutonomousOpModeName-1756089600000.txt", OpMode: "AVeryLongAutonomousOpModeName"},
+					}
+				}},
+				{"power report", func(m *SettingsModel) {
+					m.screen = screenPowerReport
+					m.power.report, _ = power.Parse(powerRecording)
+				}},
+				{"power, nothing there", func(m *SettingsModel) {
+					m.screen = screenPower
+					m.power.runs = nil
 				}},
 				{"blob branches, still looking", func(m *SettingsModel) {
 					m.screen = screenBlobBranch
@@ -88,3 +104,13 @@ func TestFillBudgetsWrappedRowsNotNewlines(t *testing.T) {
 		t.Error("the footer was pushed off the screen by rows that did not fit")
 	}
 }
+
+const powerRecording = `pusher-power 1
+opmode TeleOP
+seconds 42.500
+period 100
+volts 11.20 13.40
+device shooter motor 420 6.5000 21.7000 30.100 2
+device left_front motor 420 2.1000 8.4000 12.300 0
+device Control_Hub hub 420 14.2000 33.5000 30.100 0
+`

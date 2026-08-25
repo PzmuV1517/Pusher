@@ -9,6 +9,36 @@ Anything not listed is in `git log`, which is the complete record.
 
 ## Unreleased
 
+- **`pusher power` shows what drew the most current.** Turn the monitor on in
+  `pusher settings` -> Power monitor, deploy, drive, and it reports peak and
+  average draw per motor, the hub's total, and how far the battery sagged,
+  ranked worst first, with the moment each peak happened. The monitor is one
+  generated file that attaches itself through the same `@OnCreateEventLoop`
+  hook FtcDashboard uses, so no OpMode changes and nothing to remember before a
+  practice run.
+
+  It costs loop time. A motor's current cannot be read in a bulk transfer, so
+  every reading is its own round trip over the bus, and pusher says so on every
+  deploy while the monitor is installed. **Not for use in an official match.**
+
+- **Power readings** in `pusher settings` lists the runs on the robot and shows
+  any of them, rather than only the newest. Each run is its own recording, named
+  by OpMode and time so two runs of the same OpMode are told apart.
+
+- When the monitor records nothing it leaves a note on the robot saying why, and
+  `pusher power` shows the note instead of an empty directory. The log would
+  have done, if anybody could read it: it is a ring buffer on a robot somebody
+  has to plug into, and by the time the question is asked the line has gone.
+
+- A robot with no recordings yet is no longer reported as a failure to look.
+  `ls` on a directory that does not exist exits non-zero, adb passes that back
+  as its own exit code, and the result was that "you have nothing recorded yet"
+  surfaced as `cannot list ... exit status 1`. The same fault was in the trace
+  listing, so `pusher visualiser` reported it too rather than saying there were
+  no traces.
+
+## 1.2.23
+
 - **The blob menu picks a release branch.** blob publishes branch work as a
   labelled tag, `v1.8.0-RSTController.1`, which GitHub marks as a pre-release;
   the label up to its first dot is the branch. **Release branch** lists the
@@ -16,12 +46,14 @@ Anything not listed is in `git log`, which is the complete record.
   whichever you choose. **Version**, and the line a deploy prints, then follow
   that branch rather than main.
 
+## 1.2.22
+
 - **A newer pusher announces itself.** Once a day, in the background, pusher
   asks whether a newer release exists and says so with a desktop notification
   rather than a line that scrolls past the end of a deploy. macOS through
   osascript, Linux through notify-send, Windows through a WinRT toast. The same
   version is announced once, not once a day until it is installed. Turn it off
-  in `pusher settings` → Tell me about updates, or with `PUSHER_NO_NOTIFY=1`.
+  in `pusher settings` -> Tell me about updates, or with `PUSHER_NO_NOTIFY=1`.
 - **A deploy says when blob has moved on**, at the start and again at the end,
   because the start is when it is still cheap to act on and the end is what is
   still on screen. The check runs beside the deploy rather than in front of it.

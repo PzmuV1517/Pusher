@@ -49,9 +49,12 @@ func Target() (string, error) {
 
 // ListTraces returns the trace files on the device, newest first.
 func ListTraces(serial string) ([]RemoteTrace, error) {
-	out, err := Shell(serial, "ls", "-t", TraceDir, "2>/dev/null")
+	// A missing directory is a robot that has never recorded a trace, not a
+	// failure to look. Without `|| true` the device's ls exit code comes back
+	// as adb's, and "you have no traces yet" reads as "adb is broken".
+	out, err := Shell(serial, "ls", "-t", TraceDir, "2>/dev/null", "||", "true")
 	if err != nil {
-		return nil, fmt.Errorf("cannot list %s on the robot: %w", TraceDir, err)
+		return nil, fmt.Errorf("cannot reach the robot to look in %s: %w", TraceDir, err)
 	}
 
 	var traces []RemoteTrace

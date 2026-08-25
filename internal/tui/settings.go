@@ -11,6 +11,7 @@ import (
 	"github.com/andreibanu/pusher/internal/ftcproject"
 	"github.com/andreibanu/pusher/internal/notify"
 	"github.com/andreibanu/pusher/internal/pathtrace"
+	"github.com/andreibanu/pusher/internal/power"
 	"github.com/andreibanu/pusher/internal/telemetry"
 	"github.com/andreibanu/pusher/internal/wifi"
 	tea "github.com/charmbracelet/bubbletea"
@@ -40,6 +41,8 @@ const (
 	screenBlobRuns
 	screenBlobBranch
 	screenBlobToken
+	screenPower
+	screenPowerReport
 	screenUpdate
 	screenDeploy
 	screenExtreme
@@ -79,6 +82,7 @@ type SettingsModel struct {
 	confirmDeleteIndex int
 
 	blob     blobState
+	power    powerState
 	extreme  extremeState
 	root     string
 	gateStep int
@@ -170,6 +174,8 @@ var mainItems = []string{
 	"Exit",
 	"Count this device",
 	"Tell me about updates",
+	"Power monitor",
+	"Power readings",
 }
 
 // Update satisfies tea.Model.
@@ -202,6 +208,24 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.blob.auth = msg.status
 		m.blob.creds = msg.creds
 		m.cursor, m.offset = 0, 0
+		return m, nil
+
+	case powerListMsg:
+		m.power.busy = false
+		m.power.serial = msg.serial
+		m.power.runs = msg.runs
+		m.power.err = msg.err
+		m.cursor, m.offset = 0, 0
+		return m, nil
+
+	case powerReportMsg:
+		m.power.busy = false
+		m.power.err = msg.err
+		m.power.report = msg.report
+		if msg.err == nil {
+			m.power.shown = true
+			m.goTo(screenPowerReport, 0)
+		}
 		return m, nil
 
 	case blobBranchMsg:
@@ -246,6 +270,10 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateBlobRuns(key)
 	case screenBlobBranch:
 		return m.updateBlobBranch(key)
+	case screenPower:
+		return m.updatePower(key)
+	case screenPowerReport:
+		return m.updatePowerReport(key)
 	case screenBlobToken:
 		return m.updateBlobToken(key)
 	case screenUpdate:
@@ -270,6 +298,7 @@ var mainSections = []menuSection{
 	{"Getting to the robot", []int{0, 1, 2, 3}},
 	{"Building and deploying", []int{6, 4, 5, 8}},
 	{"Reloading instead of installing", []int{9, 10}},
+	{"Diagnostics", []int{15, 16}},
 	{"Extras", []int{optionalRow}},
 	{"Pusher itself", []int{11, 14, 13}},
 	{"", []int{12}},
@@ -367,6 +396,10 @@ func (m *SettingsModel) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.toggleTelemetry()
 		case 14:
 			m.toggleUpdateNotify()
+		case 15:
+			m.togglePowerMonitor()
+		case 16:
+			return m, m.enterPower()
 		}
 	}
 
@@ -704,6 +737,10 @@ func (m *SettingsModel) View() string {
 		b.WriteString(m.viewBlobRuns())
 	case screenBlobBranch:
 		b.WriteString(m.viewBlobBranch())
+	case screenPower:
+		b.WriteString(m.viewPower())
+	case screenPowerReport:
+		b.WriteString(m.viewPowerReport())
 	case screenBlobToken:
 		b.WriteString(m.viewBlobToken())
 	case screenUpdate:
@@ -808,6 +845,38 @@ func (m *SettingsModel) updateNotifyLabel() string {
 	return "on"
 }
 
+// The power monitor is a file in the team's project rather than a setting, so
+// this reads the project rather than the config: a toggle that disagreed with
+// what is on disk would be the same bug the Extreme setting had.
+func (m *SettingsModel) powerLabel() string {
+	if !power.Installed(m.projectRoot()) {
+		return "off"
+	}
+	return "on (costs loop time)"
+}
+
+func (m *SettingsModel) togglePowerMonitor() {
+	root := m.projectRoot()
+
+	if power.Installed(root) {
+		if err := power.Remove(root); err != nil {
+			m.err = err
+			return
+		}
+		m.err = nil
+		m.status = "Off: removed. Deploy to take it off the robot"
+		return
+	}
+
+	if err := power.Install(root); err != nil {
+		m.err = err
+		return
+	}
+
+	m.err = nil
+	m.status = "On: deploy, drive, then `pusher power`. Not for matches"
+}
+
 func (m *SettingsModel) viewMain() string {
 	values := []string{
 		m.defaultProfileLabel(),
@@ -825,6 +894,8 @@ func (m *SettingsModel) viewMain() string {
 		"",
 		m.telemetryLabel(),
 		m.updateNotifyLabel(),
+		m.powerLabel(),
+		"",
 	}
 
 	list := m.layout()
