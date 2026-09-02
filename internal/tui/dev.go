@@ -171,9 +171,15 @@ func devTick() tea.Cmd {
 
 // RunDev opens the developer menu.
 func RunDev(projectRoot, apk string, splits []string) error {
+	_, err := tea.NewProgram(newDevModel(projectRoot, apk, splits)).Run()
+	return err
+}
+
+// newDevModel builds the developer menu.
+//
+// Deliberately with no size on it, for the same reason the others have none.
+func newDevModel(projectRoot, apk string, splits []string) *devModel {
 	m := &devModel{
-		height:  defaultHeight,
-		width:   defaultWidth,
 		project: projectRoot,
 		apk:     apk,
 		splits:  splits,
@@ -185,8 +191,7 @@ func RunDev(projectRoot, apk string, splits []string) error {
 	}
 	m.connect.consider(err)
 
-	_, err = tea.NewProgram(m).Run()
-	return err
+	return m
 }
 
 // devConnectedMsg is the outcome of the menu going and getting the robot.
@@ -410,6 +415,19 @@ func (m *devModel) View() string {
 		return ""
 	}
 
+	// Nothing is drawn until the terminal has said how big it is.
+	//
+	// Bubbletea renders one frame before it handles the first resize, so a
+	// model that starts with a height renders that height into whatever window
+	// it actually has. Twenty four rows into a fourteen row panel scrolls the
+	// terminal ten rows, and the renderer has been counting from where it
+	// started: from then on it repaints at the wrong height and leaves rows of
+	// old frames on screen. That is the duplicated entry, and it happens before
+	// a key is ever pressed.
+	if m.height <= 0 {
+		return ""
+	}
+
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Pusher developer tools"))
 	b.WriteString("\n\n")
@@ -436,7 +454,7 @@ func (m *devModel) View() string {
 		b.WriteString("\n" + okStyle.Render("  ✓ "+fit(m.status, textWidth(m.width)-2)) + "\n")
 	}
 
-	return clamp(b.String(), m.width, m.height)
+	return clamp(b.String(), m.width, usable(m.height))
 }
 
 func (m *devModel) viewDevMain() string {

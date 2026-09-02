@@ -155,11 +155,10 @@ func (m *SettingsModel) viewPower() string {
 
 	b.WriteString(helpStyle.Render("  "+fit("One run each, newest first.", textWidth(m.width))) + "\n\n")
 
-	b.WriteString(m.renderList(len(m.power.runs), func(i int) string {
-		run := m.power.runs[i]
-		return renderRow(i == m.cursor, run.OpMode, run.When.Format("15:04:05"), 29, m.width)
-	}))
-
-	b.WriteString("\n" + helpStyle.Render("  "+fit("enter opens it in a browser · r refresh · esc back", textWidth(m.width))) + "\n")
-	return b.String()
+	return m.fill(b.String(),
+		"\n"+helpStyle.Render("  "+fit("enter opens it in a browser · r refresh · esc back", textWidth(m.width)))+"\n",
+		len(m.power.runs), func(i int) string {
+			run := m.power.runs[i]
+			return renderRow(i == m.cursor, run.OpMode, run.When.Format("15:04:05"), 29, m.width)
+		})
 }

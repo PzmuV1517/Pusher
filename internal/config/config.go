@@ -51,7 +51,8 @@ type Config struct {
 
 	BlobBranch string `mapstructure:"blob_branch"`
 
-	PowerPeriod int `mapstructure:"power_period_ms"`
+	PowerPeriod   int `mapstructure:"power_period_ms"`
+	ProfilePeriod int `mapstructure:"profile_period_ms"`
 
 	ForceInstall bool `mapstructure:"force_install"`
 }
@@ -105,6 +106,7 @@ func Initialize() error {
 	viper.SetDefault("update_notify", true)
 	viper.SetDefault("blob_branch", "main")
 	viper.SetDefault("power_period_ms", 100)
+	viper.SetDefault("profile_period_ms", 10)
 	viper.SetDefault("force_install", false)
 	viper.SetDefault("telemetry", true)
 
@@ -153,6 +155,7 @@ func Save(cfg *Config) error {
 	viper.Set("update_notify", cfg.UpdateNotify)
 	viper.Set("blob_branch", cfg.BlobBranch)
 	viper.Set("power_period_ms", cfg.PowerPeriod)
+	viper.Set("profile_period_ms", cfg.ProfilePeriod)
 	viper.Set("force_install", cfg.ForceInstall)
 
 	if err := viper.WriteConfig(); err != nil {
@@ -470,6 +473,26 @@ func SetPowerPeriod(ms int) error {
 		return err
 	}
 	cfg.PowerPeriod = ms
+	return Save(cfg)
+}
+
+// GetProfilePeriod is how often the loop profiler samples the OpMode's thread,
+// in milliseconds. It is the whole cost of the feature, so it is worth choosing.
+func GetProfilePeriod() int {
+	period := viper.GetInt("profile_period_ms")
+	if period <= 0 {
+		return 10
+	}
+	return period
+}
+
+// SetProfilePeriod changes how often the profiler samples.
+func SetProfilePeriod(ms int) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	cfg.ProfilePeriod = ms
 	return Save(cfg)
 }
 

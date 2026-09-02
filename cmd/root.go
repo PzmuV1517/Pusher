@@ -86,6 +86,7 @@ func init() {
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(dashCmd)
 	rootCmd.AddCommand(powerCmd)
+	rootCmd.AddCommand(profileCmd)
 	rootCmd.AddCommand(devCmd)
 	rootCmd.AddCommand(visualiseCmd)
 	rootCmd.AddCommand(helpCmd)

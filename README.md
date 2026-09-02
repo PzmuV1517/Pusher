@@ -105,6 +105,7 @@ Requires `adb` and an FTC project with a Gradle wrapper.
 | `pusher doctor` | Diagnose Wi-Fi, adb and project problems |
 | `pusher visualiser <OpMode>` | Draw the path an auto drove, coloured by speed |
 | `pusher power` | Show what drew the most current on the last run |
+| `pusher profile` | Flame chart of what ate the loop time on the last run |
 | `pusher prepare` | Cache Gradle dependencies while online |
 | `pusher help` | Help |
 
@@ -237,6 +238,63 @@ way this goes wrong is somebody turning it on during practice and forgetting:
 [!] The power monitor is installed, so this build reads motor current
     while every OpMode runs. That costs loop time: a motor's current
     cannot be bulk read, so each reading is its own trip over the bus.
+    Turn it off in `pusher settings` before an official match.
+```
+
+## What is eating the loop time
+
+The power monitor answers what the battery is going into. This answers where the
+time is going, which is the other half of the same question and the one you
+cannot guess your way to.
+
+Turn **Loop profiler** on in `pusher settings`, deploy, run an OpMode, stop it,
+then `pusher profile`. It draws a flame chart:
+
+```
+  LynxModule.getBulkData        PathFollower.step
+  Blob.update                                      Spindexer.update
+  FarBlue.loop
+  EventLoopManager.run
+  all
+```
+
+Each bar is a method, as wide as the share of the run spent inside it and
+everything it called, growing upwards from the whole run at the bottom so a bar
+sits on top of the one that called it. The code that was actually executing ends
+up along the top. Click a bar to zoom into it. Your own code is drawn in blue
+so it stands out from the SDK and the libraries around it, and the table under
+the chart ranks by time spent *in* a method rather than under it, which is the
+difference between the code that was running and a list of everything that
+called it.
+
+Nothing has to be instrumented, and no OpMode has to be edited. A thread wakes
+up every few milliseconds, asks the thread running the OpMode what it is in the
+middle of, and files the answer. Time is then counted in samples: a method in
+half of them was running for half the run.
+
+The thread to sample is found by looking for your OpMode's own class in the
+stacks rather than by name, because the SDK runs an iterative OpMode's `loop()`
+on the event loop thread and a `LinearOpMode` on one of its own, and promises the
+name of neither.
+
+**Profile rate** chooses how often, from 2 ms to 50 ms. Like the power monitor's,
+the value is baked into the generated file, so changing it needs a deploy.
+
+The page says how much of the run it actually saw. A robot too busy to let the
+sampler run at its period produces a profile that is correctly shaped but stands
+for less of the run than it looks like, and that is worth knowing rather than
+hiding.
+
+### It costs loop time too, and is not for matches
+
+Reading another thread's stack stops that thread for as long as the walk takes.
+At the default rate that is small, and it is not nothing, so pusher says so on
+every deploy while the profiler is installed:
+
+```
+[!] The loop profiler is installed, so this build samples the OpMode's
+    thread while every OpMode runs. Reading a thread's stack stops it for
+    as long as the walk takes, so that costs loop time.
     Turn it off in `pusher settings` before an official match.
 ```
 

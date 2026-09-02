@@ -59,6 +59,7 @@ func push(gradlePath string, blob *updates.BlobCheck) error {
 	announceBlob(blob, blobStartWait, false)
 
 	warnPowerMonitor(gradle.ProjectDir(gradlePath))
+	warnLoopProfiler(gradle.ProjectDir(gradlePath))
 
 	// Before the build, the Wi-Fi hop and the install, so a deploy that would
 	// have silently skipped slimming stops while stopping is still cheap.

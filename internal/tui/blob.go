@@ -471,20 +471,19 @@ func (m *SettingsModel) viewBlob() string {
 		}
 	}
 
-	b.WriteString(m.renderList(len(items), func(i int) string {
-		return renderRow(i == m.cursor, items[i], values[i], 29, m.width)
-	}))
-
-	b.WriteString("\n")
+	var tail strings.Builder
+	tail.WriteString("\n")
 	if m.blob.busy {
-		b.WriteString(okStyle.Render("  Working...") + "\n")
+		tail.WriteString(okStyle.Render("  Working...") + "\n")
 	} else if m.blob.dep != nil && !m.blob.dep.Present && m.blob.auth.OK() {
-		b.WriteString(errStyle.Render("  The AAR this project references is missing from TeamCode/libs.") + "\n")
-		b.WriteString(helpStyle.Render("  Switching variant or version downloads it again.") + "\n")
+		tail.WriteString(errStyle.Render("  The AAR this project references is missing from TeamCode/libs.") + "\n")
+		tail.WriteString(helpStyle.Render("  Switching variant or version downloads it again.") + "\n")
 	}
+	tail.WriteString(helpStyle.Render("  "+fit("↑/↓ move · enter select · esc back", textWidth(m.width))) + "\n")
 
-	b.WriteString(helpStyle.Render("  "+fit("↑/↓ move · enter select · esc back", textWidth(m.width))) + "\n")
-	return b.String()
+	return m.fill(b.String(), tail.String(), len(items), func(i int) string {
+		return renderRow(i == m.cursor, items[i], values[i], 29, m.width)
+	})
 }
 
 // branchValue says which branch this project follows, and whether the version
@@ -551,17 +550,16 @@ func (m *SettingsModel) viewBlobRuns() string {
 		return b.String()
 	}
 
-	b.WriteString(m.renderList(len(m.blob.traces), func(i int) string {
-		t := m.blob.traces[i]
-		note := ""
-		if i == 0 {
-			note = "newest"
-		}
-		return renderRow(i == m.cursor, t.OpMode, note, 29, m.width)
-	}))
-
-	b.WriteString("\n" + helpStyle.Render("  enter opens the visualiser · r refresh · esc back") + "\n")
-	return b.String()
+	return m.fill(b.String(),
+		"\n"+helpStyle.Render("  enter opens the visualiser · r refresh · esc back")+"\n",
+		len(m.blob.traces), func(i int) string {
+			t := m.blob.traces[i]
+			note := ""
+			if i == 0 {
+				note = "newest"
+			}
+			return renderRow(i == m.cursor, t.OpMode, note, 29, m.width)
+		})
 }
 
 func (m *SettingsModel) blobLockedNotice() string {
@@ -704,19 +702,18 @@ func (m *SettingsModel) viewBlobBranch() string {
 
 	current := config.GetBlobBranch()
 
-	b.WriteString(m.renderList(len(m.blob.branches), func(i int) string {
-		name := m.blob.branches[i]
+	return m.fill(b.String(),
+		"\n"+helpStyle.Render("  "+fit("enter follow · r refresh · esc back", textWidth(m.width)))+"\n",
+		len(m.blob.branches), func(i int) string {
+			name := m.blob.branches[i]
 
-		value := ""
-		if name == current {
-			value = "following"
-		} else if name != blobrel.MainBranch {
-			value = "branch work"
-		}
+			value := ""
+			if name == current {
+				value = "following"
+			} else if name != blobrel.MainBranch {
+				value = "branch work"
+			}
 
-		return renderRow(i == m.cursor, name, value, 29, m.width)
-	}))
-
-	b.WriteString("\n" + helpStyle.Render("  "+fit("enter follow · r refresh · esc back", textWidth(m.width))) + "\n")
-	return b.String()
+			return renderRow(i == m.cursor, name, value, 29, m.width)
+		})
 }

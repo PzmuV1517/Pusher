@@ -9,6 +9,71 @@ Anything not listed is in `git log`, which is the complete record.
 
 ## Unreleased
 
+- **A flame chart of where the loop time goes.** The power monitor says what the
+  battery is going into; this says where the time is going, which is the other
+  half of the same question. Turn **Loop profiler** on in `pusher settings`,
+  deploy, run an OpMode, then `pusher profile`. Nothing is instrumented and no
+  OpMode is edited: a thread wakes every few milliseconds, asks the thread
+  running the OpMode what it is in the middle of, and files the answer, so time
+  is counted in samples. Each bar on the chart is as wide as the share of the
+  run spent inside that method and everything it called, your own code is drawn
+  in blue, and clicking a bar zooms into it. The table ranks by time spent in a
+  method rather than under it, which is the difference between the code that was
+  running and a list of everything that called it. The page says how much of the
+  run the sampler actually got, because a profile that stands for a third of a
+  run should not look like one that stands for all of it. It costs loop time,
+  says so on every deploy, and is not for matches.
+
+- **The menus stop drawing over themselves.** The repeated entry had two causes,
+  and the first one happens before a key is pressed: bubbletea draws one frame
+  before it handles the first resize, and the menus started out believing they
+  had twenty four rows. In a fourteen row panel that first frame scrolled the
+  terminal ten rows out from under the renderer, which had been counting from
+  where it started, so every repaint after that landed at the wrong height and
+  left rows of old frames on screen. Nothing is drawn now until the terminal has
+  said how big it is.
+
+  The second is that a frame exactly as tall as the window scrolls it as the
+  last line is written, which puts the renderer one row out for the same reason.
+  Every frame now leaves a row spare, which is what the lists padding themselves
+  out to fill the window exactly had taken away.
+
+- **The menus stop changing height as you move through them.** Going down a list
+  and back up was enough to break them, and the shape was always the same: the
+  block grew a row the moment a scroll marker appeared and lost one again at
+  either end, so the whole view changed height as the cursor moved. The footer
+  walked up and down the screen and a frame that had been taller left its bottom
+  rows behind. Every list is now padded to a fixed height, the room for a status
+  message is reserved whether or not there is one, and the six screens that had
+  their own copy of the layout code use the one that measures rather than
+  guesses. The hardware configuration menu had the same fault and its own copy
+  again, and on a short terminal it overflowed outright: fourteen rows into ten.
+
+  Moving the cursor now only moves the cursor. There used to be a second answer
+  for where the window sits, computed on the keypress from a guessed chrome
+  height, which the render then disagreed with and corrected. That is most of
+  what made these menus feel unpredictable to move around in.
+
+- **The path visualiser draws the run, not just the plan.** Every recorded
+  position was counted in the caption and then thrown away, so the page drew the
+  route the robot was asked to follow and called it the run. The driven path is
+  now the solid line, taken from the robot's own positions in the order it
+  recorded them and coloured by the speed it was really doing, with the planned
+  path dashed underneath, so the gap between them is the following error. The
+  view is sized to include both, since a run that overshot went outside the
+  planned area by definition.
+
+- **Straight legs are estimated again.** blob describes a straight leg with the
+  only two points it needs, its ends, and both of those are stationary, so the
+  model treated it as a segment that was stopped everywhere it had a point.
+  Every straight leg estimated zero, which took the run's estimate, every peak
+  and the whole colour scale with it: a page reporting `0.00 s` against a
+  measured `28.97`, `-100%`, and a speed ramp topping out at 1 in/s. Curves are
+  resampled before profiling, which is exact for a line and lets the heat map
+  show the acceleration along one. The demo trace hid this for the life of the
+  feature by sampling even its straight legs 49 times; it now records them the
+  way blob does.
+
 - **Pusher Extreme will not set up alongside Sloth.** Both reload team code onto
   the robot and both install a class loader for it, so the robot ends up holding
   two copies and loading whichever it reaches first. Traced from a team's robot

@@ -172,18 +172,24 @@ type hwOpMsg struct {
 	reload bool
 }
 
-// RunHWConfig opens the hardware configuration menu.
-func RunHWConfig(dir string) error {
-	m := &hwModel{
-		store:  robotcfg.NewStore(dir),
-		height: defaultHeight,
-	}
+// newHWModel builds the hardware configuration menu.
+//
+// Deliberately with no size on it: nothing is drawn until the terminal has said
+// how big it is, and a default here is a full height frame painted into a
+// window that may be half that.
+func newHWModel(dir string) *hwModel {
+	m := &hwModel{store: robotcfg.NewStore(dir)}
 
 	m.refreshLocal()
 	m.rebuildEntries()
 	m.loading = true
 
-	_, err := tea.NewProgram(m).Run()
+	return m
+}
+
+// RunHWConfig opens the hardware configuration menu.
+func RunHWConfig(dir string) error {
+	_, err := tea.NewProgram(newHWModel(dir)).Run()
 	return err
 }
 

@@ -51,7 +51,18 @@ func Demo() *Trace {
 	for i, l := range demoRoute {
 		curve := l.points()
 
-		_, _, seconds, _ := profileCurve(curve, l.power, lim)
+		// Recorded the way blob records it, which for a straight leg is its two
+		// ends and nothing between them. The demo used to sample every leg
+		// forty nine times, including the straight ones, and so looked right
+		// for the whole life of a bug that made every real straight leg
+		// estimate zero. A demo that does not have the shape of the data is a
+		// demo that hides things.
+		recorded := curve
+		if l.control == nil {
+			recorded = [][]float64{{l.from.X, l.from.Y}, {l.to.X, l.to.Y}}
+		}
+
+		_, _, seconds, _ := profileCurve(densify(recorded, plotStep), l.power, lim)
 		actual := seconds * (1 + l.slip)
 
 		seg := Segment{
@@ -62,7 +73,7 @@ func Demo() *Trace {
 			MaxPower: l.power,
 			Start:    l.from,
 			Target:   l.to,
-			Curve:    curve,
+			Curve:    recorded,
 			Label:    l.label,
 			Source:   "DemoAuto.java:" + itoa(40+i*12),
 		}

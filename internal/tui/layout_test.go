@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/andreibanu/pusher/internal/power"
+	"github.com/andreibanu/pusher/internal/profile"
 	"strings"
 	"testing"
 
@@ -39,6 +40,13 @@ func TestNoScreenOverflowsASmallTerminal(t *testing.T) {
 						{Name: "AVeryLongAutonomousOpModeName-1756089600000.txt", OpMode: "AVeryLongAutonomousOpModeName"},
 					}
 				}},
+				{"loop profiles", func(m *SettingsModel) {
+					m.screen = screenProfile
+					m.profile.runs = []profile.Recording{
+						{Name: "TeleOP-1756089600000.txt", OpMode: "TeleOP"},
+						{Name: "AVeryLongAutonomousOpModeName-1756089600000.txt", OpMode: "AVeryLongAutonomousOpModeName"},
+					}
+				}},
 				{"power, nothing there", func(m *SettingsModel) {
 					m.screen = screenPower
 					m.power.runs = nil
@@ -56,8 +64,8 @@ func TestNoScreenOverflowsASmallTerminal(t *testing.T) {
 				for step := 0; step < 16; step++ {
 					view := m.View()
 
-					if got := renderedRows(view, width); got > height {
-						t.Errorf("%s at %dx%d, step %d: %d rows of %d",
+					if got := renderedRows(view, width); got >= height {
+						t.Errorf("%s at %dx%d, step %d: %d rows leaves no slack in a %d row window",
 							screen.name, width, height, step, got, height)
 						break
 					}

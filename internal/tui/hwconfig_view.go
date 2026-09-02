@@ -13,6 +13,19 @@ func (m *hwModel) View() string {
 		return ""
 	}
 
+	// Nothing is drawn until the terminal has said how big it is.
+	//
+	// Bubbletea renders one frame before it handles the first resize, so a
+	// model that starts with a height renders that height into whatever window
+	// it actually has. Twenty four rows into a fourteen row panel scrolls the
+	// terminal ten rows, and the renderer has been counting from where it
+	// started: from then on it repaints at the wrong height and leaves rows of
+	// old frames on screen. That is the duplicated entry, and it happens before
+	// a key is ever pressed.
+	if m.height <= 0 {
+		return ""
+	}
+
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Hardware configurations"))
 	b.WriteString("\n\n")
@@ -36,43 +49,86 @@ func (m *hwModel) View() string {
 
 	// The offer outranks the error it came with, and is not a success: a tick
 	// next to "no robot connected" reads as pusher being pleased about it.
+	b.WriteString(m.statusArea())
+
+	return clamp(b.String(), m.width, usable(m.height))
+}
+
+// hwStatusRows is the room the message under the menu always takes: a blank
+// line and two rows, whether or not there is anything to put in them.
+//
+// Always, because a menu that grows a row when it has something to say moves
+// every entry on it the moment an action reports back.
+const hwStatusRows = 3
+
+// statusArea is the message under the menu, or the space it would have taken.
+//
+// The offer outranks the error it came with, and is not a success: a tick next
+// to "no robot connected" reads as pusher being pleased about it.
+func (m *hwModel) statusArea() string {
+	room := textWidth(m.width) - 2
+
+	var lines []string
 	switch {
 	case m.busy != "":
-		b.WriteString("\n" + scrollStyle.Render("  … "+m.busy) + "\n")
+		lines = []string{scrollStyle.Render("  … " + fit(m.busy, room))}
 
 	case m.connect.open:
-		b.WriteString("\n")
 		if m.err != nil {
-			b.WriteString(errStyle.Render("  ! "+m.err.Error()) + "\n")
+			lines = append(lines, errStyle.Render("  ! "+fit(m.err.Error(), room)))
 		}
-		b.WriteString(helpStyle.Render("  "+m.connect.hint()) + "\n")
+		lines = append(lines, helpStyle.Render("  "+fit(m.connect.hint(), room)))
 
 	case m.err != nil:
-		b.WriteString("\n" + errStyle.Render("  ! "+m.err.Error()) + "\n")
+		lines = []string{errStyle.Render("  ! " + fit(m.err.Error(), room))}
 	case m.status != "":
-		b.WriteString("\n" + okStyle.Render("  ✓ "+m.status) + "\n")
+		lines = []string{okStyle.Render("  ✓ " + fit(m.status, room))}
 	}
 
-	return b.String()
+	out := "\n"
+	for i := 0; i < hwStatusRows-1; i++ {
+		if i < len(lines) {
+			out += lines[i] + "\n"
+			continue
+		}
+		out += "\n"
+	}
+	return out
+}
+
+// budget is how many rows a list may use: the terminal, less the title, less
+// the status area, less whatever the screen puts above and below it.
+func (m *hwModel) budget(before, after string) int {
+	chrome := 2 + hwStatusRows + height(before, m.width) + height(after, m.width)
+
+	if budget := usable(m.height) - chrome; budget >= minVisibleRows {
+		return budget
+	}
+	return minVisibleRows
+}
+
+// fill lays a list out into the room left over, in a block that is the same
+// height wherever the cursor is.
+func (m *hwModel) fill(before, after string, rendered []string) string {
+	block, start := pane(rendered, m.width, m.budget(before, after), m.offset, m.cursor)
+	m.offset = start
+
+	return before + block + after
 }
 
 func (m *hwModel) viewHWDevices() string {
-	var b strings.Builder
-
 	title := m.sel
 	if m.dirty {
 		title += " *"
 	}
-	fmt.Fprintf(&b, "  %s   %s\n", titleStyle.Render(title), m.problemSummary())
-	b.WriteString("\n")
 
-	visible := m.visibleRows()
+	head := fmt.Sprintf("  %s   %s\n\n", titleStyle.Render(title), m.problemSummary())
 
+	tail := m.problemList() +
+		"\n" + helpStyle.Render("  "+fit("enter edit   a add   d remove   s save   p save and push   esc back", textWidth(m.width))) + "\n"
+
+	rendered := make([]string, len(m.rows))
 	for i, row := range m.rows {
-		if i < m.offset || i >= m.offset+visible {
-			continue
-		}
-
 		cursor := "  "
 		if i == m.cursor {
 			cursor = cursorOn.Render("> ")
@@ -88,27 +144,19 @@ func (m *hwModel) viewHWDevices() string {
 
 		switch row.Kind {
 		case hwRowPortal:
-			fmt.Fprintf(&b, "%s%s %s\n", cursor, mark, titleStyle.Render(row.Label))
+			rendered[i] = fmt.Sprintf("%s%s %s\n", cursor, mark, titleStyle.Render(row.Label))
 		case hwRowModule:
-			fmt.Fprintf(&b, "%s%s   %s  %s\n", cursor, mark,
+			rendered[i] = fmt.Sprintf("%s%s   %s  %s\n", cursor, mark,
 				valueStyle.Render(row.Label), helpStyle.Render(row.Detail))
 		case hwRowDevice:
-			fmt.Fprintf(&b, "%s%s     %-34s %s\n", cursor, mark,
+			rendered[i] = fmt.Sprintf("%s%s     %-34s %s\n", cursor, mark,
 				row.Label, helpStyle.Render(row.Detail))
 		default:
-			fmt.Fprintf(&b, "%s%s     %s\n", cursor, mark, unsetStyle.Render(row.Label))
+			rendered[i] = fmt.Sprintf("%s%s     %s\n", cursor, mark, unsetStyle.Render(row.Label))
 		}
 	}
 
-	if len(m.rows) > visible {
-		fmt.Fprintf(&b, "\n  %s\n", scrollStyle.Render(fmt.Sprintf("%d-%d of %d",
-			m.offset+1, min(m.offset+visible, len(m.rows)), len(m.rows))))
-	}
-
-	b.WriteString(m.problemList())
-
-	b.WriteString("\n" + helpStyle.Render("  enter edit   a add   d remove   s save   p save and push   esc back") + "\n")
-	return b.String()
+	return m.fill(head, tail, rendered)
 }
 
 func (m *hwModel) problemSummary() string {

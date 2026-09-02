@@ -189,6 +189,28 @@ func height(block string, width int) int {
 	return rows
 }
 
+// headroom is the row a frame has to leave unused at the bottom of the window.
+//
+// These menus are drawn inline, into the scrollback, rather than on the
+// alternate screen. A frame exactly as tall as the window scrolls the terminal
+// as its last line is written, and the renderer's idea of which row it is on is
+// then one out: it repaints the lines it thinks changed, at the wrong height,
+// and leaves a row of the previous frame sitting on screen. That is the
+// duplicated entry, and it arrived the moment the lists started padding
+// themselves out to fill the window exactly.
+//
+// One spare row costs an entry on a very short terminal and removes the case
+// entirely.
+const headroom = 1
+
+// usable is how many rows a frame may take in a window this tall.
+func usable(height int) int {
+	if height <= 1 {
+		return 1
+	}
+	return height - headroom
+}
+
 // clamp drops whatever will not fit on the screen.
 //
 // A last resort rather than a layout. Screens that lay themselves out to the
@@ -209,6 +231,14 @@ func clamp(view string, width, tall int) string {
 		}
 		kept = append(kept, line)
 		used += rows
+	}
+
+	// Padded back out to the height it was cut to. Where the cut lands depends
+	// on how tall the last line that fitted was, so without this a screen too
+	// tall for the terminal came out 7 rows on one frame and 8 on the next, and
+	// a view that changes height is the thing this exists to prevent.
+	for ; used < tall; used++ {
+		kept = append(kept, "")
 	}
 
 	return strings.Join(kept, "\n") + "\n"
