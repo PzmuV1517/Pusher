@@ -12,13 +12,18 @@ import (
 // The dashboard's own documentation is the specification here: "all public,
 // static, non-final fields of the class will be automatically added as
 // configuration variables", under @Config's value or the class's simple name,
-// and classes marked @Disabled are ignored.
+// and classes marked @Disabled are ignored. Panels works the same way from
+// @Configurable, which has no name of its own.
 //
 // Read from source rather than from the APK. What is wanted is what the file
 // says now, which is the thing a tuned value has to be written back into.
 
 var (
-	configRe   = regexp.MustCompile(`@Config\s*(?:\(\s*"([^"]*)"\s*\))?`)
+	// Panels marks the same idea with @Configurable, which takes no name and
+	// is therefore always the class's own. Spelled out rather than left to the
+	// prefix: `@Config` matches the first seven characters of `@Configurable`
+	// and this worked by accident, which is not the same as working.
+	configRe   = regexp.MustCompile(`@Config(?:urable)?\b\s*(?:\(\s*"([^"]*)"\s*\))?`)
 	disabledRe = regexp.MustCompile(`@Disabled\b`)
 	classRe    = regexp.MustCompile(`\b(?:class|interface|enum)\s+(\w+)`)
 

@@ -525,10 +525,11 @@ Delivering classes and having them registered are different things, and until
 now pusher only knew about the first. A reload that pushed every file and
 registered none of them printed the same success as one that worked.
 
-So after each reload pusher asks the robot what it actually has. FtcDashboard
-reports the robot's own OpMode list, straight out of `RegisteredOpModes`, which
-is the same list the Driver Station shows. Compared against the OpModes your
-source declares, that turns a silent disappearance into a line of output:
+So after each reload pusher asks the robot what it actually has. Both
+FtcDashboard and Panels report the robot's own OpMode list, straight out of
+`RegisteredOpModes`, which is the same list the Driver Station shows. Compared
+against the OpModes your source declares, that turns a silent disappearance
+into a line of output:
 
 ```
 [!] the robot registered 32 of 33 OpModes. Missing: RST TUNING
@@ -537,10 +538,38 @@ source declares, that turns a silent disappearance into a line of output:
     since the SDK attaches its reload watch when it starts.
 ```
 
-The check costs one connection and is best-effort: a project without
-FtcDashboard deploys exactly as before and is told nothing, because the
-dashboard is not a requirement and a working deploy should not end with a
-paragraph about a library you chose not to use.
+Both dashboards are asked, because a team runs one or the other and asking the
+wrong one looks exactly like a robot that registered nothing. When neither
+answers, the reload says so rather than staying quiet:
+
+```
+[!] could not check that the robot registered the 33 OpModes this reload sent.
+    No dashboard answered, and a reload can deliver every class and still
+    register none of them. Look at the Driver Station's list before you rely
+    on this build, or add FtcDashboard or Panels so pusher can look for you.
+```
+
+That used to be silence, on the grounds that a dashboard is not a requirement.
+The reasoning missed the point of the check: it exists for the deploy that did
+not work, and the one team it happened to ran Panels, so pusher had nothing to
+say while their Driver Station listed nothing at all.
+
+### It will not set up alongside Sloth
+
+Sloth reloads team code onto the robot, which is what Pusher Extreme does, and
+the two cannot share a robot. Both install a class loader and both leave a copy
+of team code on the SD card, so the robot ends up holding two and loading
+whichever it reaches first.
+
+Confirmed from a team's robot log: Sloth's loader picked up the dex pusher had
+left in the OnBotJava jars directory nine hours earlier, and every one of their
+fifteen classes failed to define, because the copy pusher ships carries team
+code alone and the library those classes extend was not reachable from that
+loader. The Driver Station listed no OpModes at all, and it survived
+uninstalling pusher, the broken copy being on the robot rather than the laptop.
+
+So setup is refused on a project that has Sloth in it, rather than warned about.
+`pusher doctor` says so too, for a project that was set up before this existed.
 
 ### Kotlin
 
@@ -583,9 +612,14 @@ for classes at all, so they need nothing.
 
 Two do. **FtcDashboard** scans the APK with `getPackageCodePath`, and is handled:
 pusher registers your `@Config` classes with it from inside the reload.
-**Panels** scans the same way through its own `ClassFinder`, and is **not
-handled yet**, so anything Panels discovers by scanning will not see reloaded
-classes. Panels used directly from your own code is unaffected.
+**Panels** scans the same way through its own `ClassFinder`, and **cannot be
+handled**, so anything Panels discovers by scanning will not see reloaded
+classes. Not for want of trying: its only public way in is
+`PanelsConfigurables.refreshClass(Object)`, which takes the object's class name
+and hands it to `Class.forName(String)`. That resolves against the caller's
+loader, which is the APK's, and a reloaded class is not in it. The Class object
+that would have worked is discarded on the way. Panels used directly from your
+own code is unaffected, and `pusher dash diff` reads Panels either way.
 
 A library that scans and is not handled can have its package kept in the APK
 instead.

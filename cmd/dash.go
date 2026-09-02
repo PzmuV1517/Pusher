@@ -14,8 +14,8 @@ var dashNoSave bool
 var dashCmd = &cobra.Command{
 	Use:   "dash",
 	Short: "Compare the robot's tuning against your code",
-	Long: `Reads what FtcDashboard is currently holding and compares it with the
-@Config fields your source declares.
+	Long: `Reads what the robot's dashboard is currently holding and compares it
+with the @Config or @Configurable fields your source declares.
 
 Tuning lives on the robot until it is written into the source, and the next
 deploy puts the code's values back. This says what you would lose.`,
@@ -24,8 +24,11 @@ deploy puts the code's values back. This says what you would lose.`,
 var dashDiffCmd = &cobra.Command{
 	Use:   "diff",
 	Short: "Show what the robot holds that your code does not",
-	Long: `Reads FtcDashboard over the robot's WebSocket and compares every value
-with the initialiser its @Config field has in your source.
+	Long: `Reads the robot's dashboard over its WebSocket and compares every value
+with the initialiser its field has in your source.
+
+Works with FtcDashboard and with Panels. A team runs one or the other, and
+pusher asks both rather than making you say which.
 
 Values that differ are tuning you have not written down yet. Values that agree
 now but differed the last time this ran are tuning you have already saved.
@@ -54,14 +57,14 @@ func runDashDiff(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("[*] Reading the dashboard on %s\n", serial)
 
-	live, err := dash.Read(serial)
+	live, from, err := dash.Read(serial)
 	if err != nil {
 		return err
 	}
 
 	code := dash.FromProject(project)
-	fmt.Printf("[*] %d tunables on the robot, %d declared in %s\n",
-		len(live), len(code), project)
+	fmt.Printf("[*] %d tunables on the robot per %s, %d declared in %s\n",
+		len(live), from, len(code), project)
 
 	path := dash.SnapshotPath(config.Dir(), serial)
 	previous, taken := dash.Load(path)

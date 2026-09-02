@@ -9,6 +9,7 @@ import (
 
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
+	"github.com/andreibanu/pusher/internal/extreme"
 	"github.com/andreibanu/pusher/internal/ftcproject"
 	"github.com/andreibanu/pusher/internal/gradle"
 	"github.com/andreibanu/pusher/internal/robot"
@@ -215,6 +216,21 @@ func reportProject() {
 	if err != nil {
 		fmt.Printf("  FTC project        : %v\n", err)
 		return
+	}
+
+	// The pairing that empties the OpMode list. Setup is refused now, but a
+	// project set up before that check existed still has the block in its
+	// gradle file and a dex on its robot, and neither goes away on its own.
+	if extreme.UsesSloth(root) {
+		fmt.Println("  Hot reload         : Sloth")
+		if extreme.Excluded(root) {
+			fmt.Println("                       ^ Pusher Extreme is also set up here, and the two")
+			fmt.Println("                         cannot share a robot: both put team code on it and")
+			fmt.Println("                         the robot loads whichever copy it finds first,")
+			fmt.Println("                         which is how an OpMode list comes up empty.")
+			fmt.Println("                         Undo it in `pusher settings` with the robot")
+			fmt.Println("                         connected, so the dex comes off the robot too.")
+		}
 	}
 
 	if analysis, err := project.Analyze(); err == nil {

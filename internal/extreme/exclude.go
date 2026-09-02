@@ -1,6 +1,7 @@
 package extreme
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -234,6 +235,13 @@ func KotlinDSL(root string) bool {
 func Supported(root string) error {
 	if _, err := os.Stat(GradleFile(root)); err != nil {
 		return fmt.Errorf("no %s to add the exclusion to", filepath.Join(Module, "build.gradle"))
+	}
+
+	// Refused rather than warned about. Two reload systems on one robot is the
+	// failure that empties the OpMode list, and it outlives uninstalling
+	// pusher, so it has to be stopped before anything is written.
+	if UsesSloth(root) {
+		return errors.New(slothRefusal)
 	}
 
 	return nil

@@ -9,6 +9,34 @@ Anything not listed is in `git log`, which is the complete record.
 
 ## Unreleased
 
+- **Pusher Extreme will not set up alongside Sloth.** Both reload team code onto
+  the robot and both install a class loader for it, so the robot ends up holding
+  two copies and loading whichever it reaches first. Traced from a team's robot
+  log: Sloth's loader picked up the dex pusher had left in the OnBotJava jars
+  directory nine hours earlier, every one of their fifteen classes failed to
+  define because the copy pusher ships carries team code alone and the library
+  those classes extend was not reachable from that loader, and the Driver
+  Station listed no OpModes at all. It survives uninstalling pusher, the broken
+  copy being on the robot rather than the laptop. Setup is now refused, and
+  `pusher doctor` names the pairing for a project already in that state.
+
+- **A reload nobody could check says so.** The check that the robot actually
+  registered what a reload sent asked FtcDashboard, and said nothing at all when
+  it could not ask, on the grounds that a dashboard is not a requirement. That
+  is exactly backwards for a check whose whole purpose is the deploy that did
+  not work, and the team it happened to ran Panels. A reload that cannot be
+  verified now says which OpModes went unchecked and how to check them.
+
+- **Panels is supported alongside FtcDashboard.** `pusher dash diff`, the
+  dashboard watch and the post-reload check all ask both, because a team runs
+  one or the other and which one is not something a laptop can tell without
+  asking. Read out of the published AARs rather than from documentation: Panels
+  serves a WebSocket on 8002, frames are `{pluginID, messageID, data}`, and the
+  OpMode list and the tunables arrive unasked for when a client connects. Panels
+  reports fully qualified class names where FtcDashboard reports simple ones,
+  so its values are keyed the same way the source is and the comparison does not
+  care which answered. `@Configurable` classes are read like `@Config` ones.
+
 - **Anything that needs the robot offers to go and get it.** `pusher power`,
   `pusher hwconfig`, `pusher dash diff` and the visualiser stopped at "no robot
   connected - run `pusher connect`", which is one command telling you to run a

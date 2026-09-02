@@ -30,7 +30,7 @@ func beginDashWatch(serial string) *dashWatch {
 		return nil
 	}
 
-	live, err := dash.Read(serial)
+	live, _, err := dash.Read(serial)
 	if err != nil || len(live) == 0 {
 		return nil
 	}
