@@ -3,80 +3,87 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
 
-	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
-	"github.com/andreibanu/pusher/internal/wifi"
+	"github.com/andreibanu/pusher/internal/robot"
 	"github.com/spf13/cobra"
 )
+
+var connectFind bool
 
 var connectCmd = &cobra.Command{
 	Use:   "connect",
 	Short: "Join the robot's Wi-Fi and connect ADB",
-	Long:  `Joins the robot's Wi-Fi network and establishes an ADB connection, without building or deploying.`,
-	RunE:  runConnect,
+	Long: `Joins the robot's Wi-Fi network and establishes an ADB connection, without
+building or deploying.
+
+With ADB relay on, this looks for the robot on the network you are already on
+first, and only takes over your Wi-Fi if it is not there. --find sweeps the
+whole network for it, which is what to run the first time or after it moves.`,
+	RunE: runConnect,
+}
+
+func init() {
+	connectCmd.Flags().BoolVar(&connectFind, "find", false,
+		"Sweep this network for the robot rather than only looking where it was")
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
-	if !adb.IsInstalled() {
-		return fmt.Errorf("adb not found - please install Android SDK Platform-Tools")
-	}
+	if connectFind {
+		found, err := robot.Locate(os.Stdout, true)
+		if err != nil {
+			return err
+		}
 
-	if device, ok := adb.FindUSBDevice(); ok {
-		fmt.Printf("[OK] Hub already attached over USB: %s\n", device.Label())
-		fmt.Println("[*] Run 'pusher' to build and deploy.")
+		robot.Remember(found)
+		fmt.Printf("[OK] %s at %s\n", orRobot(found.Model), found.Addr)
+		fmt.Println("[*] Remembered, so the next run finds it straight away.")
+
+		if !config.GetRelay() {
+			fmt.Println("[!] ADB relay is off, so deploys will still join the robot's own Wi-Fi.")
+			fmt.Println("    Turn it on in `pusher settings` -> ADB relay.")
+		}
 		return nil
 	}
 
-	wifiMgr := wifi.NewManager()
+	return connectAndSay()
+}
 
-	onRobot, err := wifiMgr.IsOnRobotNetwork()
-	if err != nil {
-		return fmt.Errorf("failed to check the current network: %w", err)
+func orRobot(model string) string {
+	if model == "" {
+		return "Robot"
+	}
+	return model
+}
+
+func connectAndSay() error {
+	if err := connectRobot(); err != nil {
+		return err
 	}
 
-	if onRobot {
-		fmt.Println("[OK] Already on the robot network")
-	} else {
-		if err := ensureProfile(); err != nil {
-			return err
-		}
-
-		profile, err := config.GetDefaultProfile()
-		if err != nil {
-			return fmt.Errorf("no robot profile configured: %w\n\nRun 'pusher settings' to add one", err)
-		}
-
-		// Started before the questions below, so the scan overlaps them rather
-		// than following them.
-		watcher := wifiMgr.Watch(profile.SSID)
-		defer watcher.Stop()
-
-		ssid, ssidErr := wifiMgr.CurrentSSID()
-		switch {
-		case ssidErr == nil && ssid != "":
-			fmt.Printf("[OK] Currently on: %s\n", ssid)
-		case errors.Is(ssidErr, wifi.ErrSSIDUnavailable):
-			if inferred, err := wifiMgr.MostRecentNetwork(robotSSIDs()...); err == nil && inferred != "" {
-				fmt.Printf("[*] The network name is hidden; assuming you are on %q\n", inferred)
-			}
-		}
-
-		fmt.Printf("\n[>] Joining robot Wi-Fi: %s\n", profile.SSID)
-		ip, err := joinRobot(wifiMgr, watcher, profile)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("[OK] On the robot network (%s)\n", ip)
-	}
-
-	fmt.Println("\n[+] Connecting to robot via ADB...")
-	if err := adb.Connect(); err != nil {
-		return fmt.Errorf("failed to connect via ADB: %w", err)
-	}
-
-	fmt.Println("[OK] Connected via ADB")
 	fmt.Println("[*] Run 'pusher' to build and deploy, or 'pusher exit' when you're done.")
-
 	return nil
+}
+
+// connectRobot runs the connect flow, and sets up a profile first if there is
+// no network on file and somebody here to be asked for one.
+func connectRobot() error {
+	err := robot.Connect(os.Stdout)
+	if !errors.Is(err, robot.ErrNoProfile) {
+		return err
+	}
+
+	// Nothing on file at all is a first run, and worth asking about. A config
+	// that has profiles but no default one is a mistake in the config, which is
+	// answered in settings rather than by asking the same questions again.
+	if has, _ := config.HasProfiles(); has {
+		return fmt.Errorf("%w\n\nRun 'pusher settings' to pick one", err)
+	}
+
+	if err := firstRunSetup(); err != nil {
+		return err
+	}
+
+	return robot.Connect(os.Stdout)
 }

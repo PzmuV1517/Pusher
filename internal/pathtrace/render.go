@@ -100,6 +100,24 @@ func (t *Trace) buildRenderData(lim Limits) renderData {
 	tx := func(x float64) float64 { return offX + (x-minX)*scale }
 	ty := func(y float64) float64 { return viewSize - (offY + (y-minY)*scale) }
 
+	// The driven path is what the robot did, and until now it was counted in
+	// the caption and then thrown away: 400 recorded positions summarised as
+	// the number 400. Drawn from the samples in the order they were taken, so
+	// it is a route through time rather than a plan, which is also what makes
+	// it connected. The planned geometry stays underneath it, because the
+	// question this page answers is what the difference between them was.
+	var robot []stroke
+	_, measured := t.MeasuredRange()
+
+	for i := 0; i+1 < len(t.Samples); i++ {
+		a, b := t.Samples[i], t.Samples[i+1]
+		robot = append(robot, stroke{
+			X1: tx(a.X), Y1: ty(a.Y),
+			X2: tx(b.X), Y2: ty(b.Y),
+			Colour: heatColour((a.V + b.V) / 2 / measured),
+		})
+	}
+
 	est, actual := t.Totals()
 	totalLen := 0.0
 
@@ -158,13 +176,20 @@ func (t *Trace) buildRenderData(lim Limits) renderData {
 		segs = append(segs, rs)
 	}
 
+	// The ramp is labelled with whatever the drawn path is coloured by, so the
+	// number under it is the one somebody can check against.
+	ramp := vMax
+	if len(robot) > 0 {
+		ramp = measured
+	}
+
 	var stops []legendStop
 	for i := 0; i <= 4; i++ {
 		f := float64(i) / 4
 		stops = append(stops, legendStop{
 			Offset: fmt.Sprintf("%.0f%%", f*100),
 			Colour: heatColour(f),
-			Label:  fmt.Sprintf("%.0f", f*vMax),
+			Label:  fmt.Sprintf("%.0f", f*ramp),
 		})
 	}
 
@@ -183,11 +208,12 @@ func (t *Trace) buildRenderData(lim Limits) renderData {
 		SlowestName: slowestName,
 		SlowestTime: fmt.Sprintf("%.2f", slowestTime),
 		TotalLength: fmt.Sprintf("%.0f", totalLen),
-		SpeedMax:    fmt.Sprintf("%.0f", vMax),
+		SpeedMax:    fmt.Sprintf("%.0f", ramp),
+		Robot:       robot,
 		LegendStops: stops,
 		ViewSize:    viewSize,
 		GridLines:   gridFor(minX, minY, maxX, maxY, tx, ty),
-		HasSamples:  len(t.Samples) > 0,
+		HasSamples:  len(robot) > 0,
 	}
 }
 

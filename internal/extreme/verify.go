@@ -11,8 +11,8 @@ import (
 // now pusher only knew about the first. A reload that delivered every file and
 // registered none of them printed the same success as one that worked.
 //
-// So it asks. FtcDashboard reports the robot's own OpMode list, straight out of
-// RegisteredOpModes, which is what the Driver Station shows. Comparing that
+// So it asks. Both dashboards report the robot's own OpMode list, straight out
+// of RegisteredOpModes, which is what the Driver Station shows. Comparing that
 // against what the team declared turns a silent disappearance into a line of
 // output naming what went missing.
 
@@ -50,7 +50,7 @@ func Verify(root, serial string) (declared, missing []OpMode, err error) {
 			time.Sleep(settleWait)
 		}
 
-		onRobot, err := dash.Registered(serial)
+		onRobot, _, err := dash.Registered(serial)
 		if err != nil {
 			return declared, nil, err
 		}
@@ -71,10 +71,22 @@ func verified(root, serial string) (step, warning string) {
 		return "", ""
 	}
 	if err != nil {
-		// Silence rather than noise. The dashboard is not required, and a
-		// deploy that worked should not end with a paragraph about a library
-		// the team chose not to use.
-		return "", ""
+		// Said out loud rather than swallowed. This used to be silence, on the
+		// grounds that a dashboard is not required and a deploy that worked
+		// should not end with a paragraph about a library the team did not
+		// choose. What that reasoning missed is that the check exists for the
+		// case where the deploy did not work: a reload can put every class on
+		// the robot and register none of them, and the team this happened to
+		// got a clean success while their Driver Station listed nothing.
+		//
+		// Two lines, and it names the thing that would answer, because a team
+		// with neither dashboard cannot be verified by anything and is entitled
+		// to know that rather than to be reassured.
+		return "", fmt.Sprintf("could not check that the robot registered the %d OpModes this reload sent.\n"+
+			"    No dashboard answered, and a reload can deliver every class and still\n"+
+			"    register none of them. Look at the Driver Station's list before you rely\n"+
+			"    on this build, or add FtcDashboard or Panels so pusher can look for you.",
+			len(declared))
 	}
 
 	if len(missing) == 0 {

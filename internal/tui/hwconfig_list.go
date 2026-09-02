@@ -169,79 +169,68 @@ func (m *hwModel) updateHWActions(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *hwModel) viewHWList() string {
-	var b strings.Builder
+	var head strings.Builder
 
-	fmt.Fprintf(&b, "  %s\n", helpStyle.Render(m.store.Dir))
+	fmt.Fprintf(&head, "  %s\n", helpStyle.Render(fit(m.store.Dir, textWidth(m.width))))
 	if m.loading {
-		fmt.Fprintf(&b, "  %s\n", helpStyle.Render("asking the robot..."))
+		fmt.Fprintf(&head, "  %s\n", helpStyle.Render("asking the robot..."))
 	} else if m.serial != "" {
 		robot := "robot: " + m.serial
 		if m.active != "" {
 			robot += "   active: " + m.active
 		}
-		fmt.Fprintf(&b, "  %s\n", helpStyle.Render(robot))
+		fmt.Fprintf(&head, "  %s\n", helpStyle.Render(fit(robot, textWidth(m.width))))
+	} else {
+		head.WriteString("\n")
 	}
-	b.WriteString("\n")
+	head.WriteString("\n")
 
 	if len(m.entries) == 0 {
-		b.WriteString("  " + unsetStyle.Render("No configurations yet.") + "\n\n")
+		head.WriteString("  " + unsetStyle.Render("No configurations yet.") + "\n\n")
 	} else {
-
-		fmt.Fprintf(&b, "  %-28s %-18s %s\n",
+		fmt.Fprintf(&head, "  %-28s %-18s %s\n",
 			helpStyle.Render("CONFIGURATION"), helpStyle.Render("WHERE"), helpStyle.Render("STATUS"))
 	}
 
-	visible := m.visibleRows()
+	var tail strings.Builder
+	if m.active != "" {
+		tail.WriteString("\n  " + helpStyle.Render("* is the configuration the robot is running") + "\n")
+	}
+	tail.WriteString("\n" + helpStyle.Render("  "+fit("enter open   up/down move   q quit", textWidth(m.width))) + "\n")
+
 	total := len(m.entries) + len(hwListExtras)
+	rendered := make([]string, total)
 
-	for i := 0; i < total; i++ {
-		if i < m.offset || i >= m.offset+visible {
-			continue
-		}
-
-		if i == len(m.entries) && len(m.entries) > 0 {
-			b.WriteString("\n")
-		}
-
+	for i := range rendered {
 		cursor := "  "
 		if i == m.cursor {
 			cursor = cursorOn.Render("> ")
 		}
 
-		if i < len(m.entries) {
-			e := m.entries[i]
-
-			name := e.Name
-			if e.Active {
-				name += " *"
-			}
-
-			status := e.status()
-			styled := valueStyle.Render(status)
-			if status == "differs" {
-				styled = scrollStyle.Render(status)
-			} else if !e.OnRobot || !e.InLocal {
-				styled = unsetStyle.Render(status)
-			}
-
-			fmt.Fprintf(&b, "%s%-28s %-18s %s\n", cursor, name, e.where(), styled)
+		if i >= len(m.entries) {
+			rendered[i] = fmt.Sprintf("%s%s\n", cursor, hwListExtras[i-len(m.entries)])
 			continue
 		}
 
-		fmt.Fprintf(&b, "%s%s\n", cursor, hwListExtras[i-len(m.entries)])
+		e := m.entries[i]
+
+		name := e.Name
+		if e.Active {
+			name += " *"
+		}
+
+		status := e.status()
+		styled := valueStyle.Render(status)
+		if status == "differs" {
+			styled = scrollStyle.Render(status)
+		} else if !e.OnRobot || !e.InLocal {
+			styled = unsetStyle.Render(status)
+		}
+
+		rendered[i] = fmt.Sprintf("%s%-28s %-18s %s\n", cursor, name, e.where(), styled)
 	}
 
-	if total > visible {
-		fmt.Fprintf(&b, "\n  %s\n", scrollStyle.Render(fmt.Sprintf("%d-%d of %d",
-			m.offset+1, min(m.offset+visible, total), total)))
-	}
-
-	if m.active != "" {
-		b.WriteString("\n  " + helpStyle.Render("* is the configuration the robot is running") + "\n")
-	}
-
-	b.WriteString("\n" + helpStyle.Render("  enter open   up/down move   q quit") + "\n")
-	return b.String()
+	return m.fill(head.String(), tail.String(), rendered)
 }
 
 func (m *hwModel) viewHWActions() string {

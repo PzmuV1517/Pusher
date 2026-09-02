@@ -79,9 +79,20 @@ const pageTemplate = `<!doctype html>
 
         {{range .Segments}}
           {{range .Strokes}}
+          {{if $.HasSamples}}
+          <line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}"
+                stroke="#8894a3" stroke-opacity=".38" stroke-width="4"
+                stroke-linecap="round" stroke-dasharray="7 9"/>
+          {{else}}
           <line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}"
                 stroke="{{.Colour}}" stroke-width="7" stroke-linecap="round"/>
           {{end}}
+          {{end}}
+        {{end}}
+
+        {{range .Robot}}
+        <line x1="{{.X1}}" y1="{{.Y1}}" x2="{{.X2}}" y2="{{.Y2}}"
+              stroke="{{.Colour}}" stroke-width="7" stroke-linecap="round"/>
         {{end}}
 
         {{range .Segments}}
@@ -104,7 +115,7 @@ const pageTemplate = `<!doctype html>
       </svg>
 
       <div class="legend">
-        <span>0 in/s</span>
+        <span>{{if .HasSamples}}measured{{else}}modelled{{end}} 0 in/s</span>
         <div class="ramp" style="background:linear-gradient(to right{{range .LegendStops}},{{.Colour}}{{end}})"></div>
         <span>{{.SpeedMax}} in/s</span>
       </div>
@@ -136,11 +147,19 @@ const pageTemplate = `<!doctype html>
   </div>
 
   <footer>
-    Colour is modelled speed: cold is slow. Highlighted rows never get above half
-    the run's top speed, which usually means the curve is tight enough that
-    maxPower is not the thing limiting you. "Real" comes from the robot; "Est"
-    comes from the kinematic model, so a large gap means the model's limits need
-    tuning to match your drivetrain.
+    {{if .HasSamples}}
+    The solid line is where the robot actually went, drawn from its recorded
+    positions in the order it recorded them, and coloured by the speed it was
+    really doing: cold is slow. The dashed line underneath is the path it was
+    asked to follow, so the gap between them is the following error.
+    {{else}}
+    Colour is modelled speed: cold is slow. This run recorded no positions, so
+    only the path it was asked to follow can be drawn.
+    {{end}}
+    Highlighted rows never get above half the run's top speed, which usually
+    means the curve is tight enough that maxPower is not the thing limiting you.
+    "Real" comes from the robot; "Est" comes from the kinematic model, so a
+    large gap means the model's limits need tuning to match your drivetrain.
   </footer>
 </div>
 </body>

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/ftcproject"
@@ -129,10 +128,6 @@ func (m *SettingsModel) ftcProject() (*ftcproject.Project, error) {
 }
 
 func (m *SettingsModel) viewDeploy() string {
-	var b strings.Builder
-
-	b.WriteString(helpStyle.Render("  Deploy speed") + "\n\n")
-
 	values := []string{
 		onOff(config.GetDeltaTransfer()),
 		onOff(config.GetSkipUnchanged()),
@@ -142,14 +137,12 @@ func (m *SettingsModel) viewDeploy() string {
 		"",
 	}
 
-	b.WriteString(m.renderList(len(deployItems), func(i int) string {
+	after := note(deployHelp, m.cursor, m.width) +
+		"\n" + helpStyle.Render("  "+fit("enter toggle · esc back · `pusher dev` measures the difference", textWidth(m.width))) + "\n"
+
+	return m.fill(helpStyle.Render("  Deploy speed")+"\n\n", after, len(deployItems), func(i int) string {
 		return renderRow(i == m.cursor, deployItems[i], values[i], 37, m.width)
-	}))
-
-	b.WriteString(note(deployHelp, m.cursor, m.width))
-
-	b.WriteString("\n" + helpStyle.Render("  "+fit("enter toggle · esc back · `pusher dev` measures the difference", textWidth(m.width))) + "\n")
-	return b.String()
+	})
 }
 
 func (m *SettingsModel) storeLibsLabel() string {

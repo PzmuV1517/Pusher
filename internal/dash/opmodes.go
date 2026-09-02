@@ -49,14 +49,56 @@ func OpModes(addr string) ([]OpMode, error) {
 	return nil, fmt.Errorf("the dashboard never sent its OpMode list")
 }
 
-// Registered opens a route to the connected robot and asks what it has.
-func Registered(serial string) ([]OpMode, error) {
-	route, err := Open(serial)
+// Which dashboard answered. Worth carrying, because a message about what the
+// robot did or did not register reads very differently depending on which one
+// was asked, and a team runs one or the other.
+type Dashboard string
+
+const (
+	// None means neither answered.
+	None Dashboard = ""
+	// FtcDashboard is the ACME one, on port 8000.
+	FtcDashboard Dashboard = "FtcDashboard"
+	// PanelsDash is Panels, on 8002.
+	PanelsDash Dashboard = "Panels"
+)
+
+// Registered opens a route to the connected robot and asks whichever dashboard
+// it is running what it has.
+//
+// Both are tried because pusher cannot tell from the laptop which one is on the
+// robot, and asking the wrong one is indistinguishable from the robot having
+// registered nothing. That mattered: the one report of a reload registering
+// nothing came from a project running Panels, where this check had nothing to
+// say and a deploy that had emptied the OpMode list printed success.
+//
+// Neither answering costs two refused connections rather than two timeouts:
+// nothing listening is a refusal, and the robot's own network does not drop it.
+func Registered(serial string) ([]OpMode, Dashboard, error) {
+	modes, err := RegisteredOn(serial, Port)
+	if err == nil {
+		return modes, FtcDashboard, nil
+	}
+
+	modes, panelsErr := RegisteredOn(serial, PanelsPort)
+	if panelsErr == nil {
+		return modes, PanelsDash, nil
+	}
+
+	return nil, None, fmt.Errorf("no dashboard answered on the robot: %w", err)
+}
+
+// RegisteredOn asks one dashboard, named by its port.
+func RegisteredOn(serial string, port int) ([]OpMode, error) {
+	route, err := OpenPort(serial, port)
 	if err != nil {
 		return nil, err
 	}
 	defer route.Close()
 
+	if port == PanelsPort {
+		return PanelsOpModes(route.Addr)
+	}
 	return OpModes(route.Addr)
 }
 

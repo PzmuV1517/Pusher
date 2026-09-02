@@ -17,12 +17,59 @@ func DefaultLimits() Limits {
 	return Limits{TopSpeed: 55, Accel: 80, Decel: 90, LatAccel: 70}
 }
 
+// plotStep is how finely a curve is resampled before it is profiled, in inches.
+//
+// Small enough that a 50 inch leg becomes twenty five points to accelerate
+// through, large enough that a spline blob already sampled finely is left
+// alone.
+const plotStep = 2.0
+
 // Profile estimates speed along a segment under the drivetrain limits.
+//
+// The curve is resampled first, because the model needs somewhere to put the
+// speed and blob describes a straight line with the only two points it needs:
+// its ends. Both of those are stationary, a run starting and finishing at rest,
+// so a two point line profiled as it arrives is a segment that is stopped at
+// every point it has. That reported an estimate of zero for every straight leg,
+// which is most of an auto, and took the whole run's estimate, every peak and
+// the colour scale down with it. Resampling is exact for a line and lets the
+// heat map show the acceleration along one, which is the thing it is for.
 func (t *Trace) Profile(lim Limits) {
 	for i := range t.Segments {
 		seg := &t.Segments[i]
+		seg.Curve = densify(seg.Curve, plotStep)
 		seg.Speeds, seg.Length, seg.EstSeconds, seg.PeakSpeed = profileCurve(seg.Curve, seg.MaxPower, lim)
 	}
+}
+
+// densify inserts points along a polyline so that no two are further apart than
+// step, leaving the shape exactly where it was.
+func densify(curve [][]float64, step float64) [][]float64 {
+	if len(curve) < 2 || step <= 0 {
+		return curve
+	}
+
+	out := make([][]float64, 0, len(curve))
+	out = append(out, curve[0])
+
+	for i := 0; i+1 < len(curve); i++ {
+		a, b := curve[i], curve[i+1]
+		if len(a) < 2 || len(b) < 2 {
+			continue
+		}
+
+		span := math.Hypot(b[0]-a[0], b[1]-a[1])
+		pieces := int(math.Ceil(span / step))
+
+		for k := 1; k < pieces; k++ {
+			u := float64(k) / float64(pieces)
+			out = append(out, []float64{a[0] + (b[0]-a[0])*u, a[1] + (b[1]-a[1])*u})
+		}
+
+		out = append(out, b)
+	}
+
+	return out
 }
 
 func profileCurve(curve [][]float64, maxPower float64, lim Limits) (speeds []float64, length, seconds, peak float64) {
@@ -116,6 +163,25 @@ func (t *Trace) Totals() (estimated, actual float64) {
 	return estimated, actual
 }
 
+// MeasuredRange is the fastest speed the robot actually reached, out of the
+// samples it recorded.
+//
+// Separate from the modelled range because the two are different claims: one is
+// what the drivetrain model says the path allows, the other is what the robot
+// did. Colouring the driven path by the model would be drawing the answer onto
+// the evidence.
+func (t *Trace) MeasuredRange() (lo, hi float64) {
+	for _, s := range t.Samples {
+		if s.V > hi {
+			hi = s.V
+		}
+	}
+	if hi <= 0 {
+		hi = 1
+	}
+	return 0, hi
+}
+
 // SpeedRange is the slowest and fastest modelled speed, for colouring.
 func (t *Trace) SpeedRange() (lo, hi float64) {
 	hi = 0
@@ -142,6 +208,16 @@ func (t *Trace) Bounds() (minX, minY, maxX, maxY float64) {
 			minY = math.Min(minY, p[1])
 			maxY = math.Max(maxY, p[1])
 		}
+	}
+
+	// Where the robot went as well as where it was sent. A run that overshot
+	// its last target went outside the planned area by definition, and sizing
+	// the view to the plan alone would clip off the part worth looking at.
+	for _, s := range t.Samples {
+		minX = math.Min(minX, s.X)
+		maxX = math.Max(maxX, s.X)
+		minY = math.Min(minY, s.Y)
+		maxY = math.Max(maxY, s.Y)
 	}
 	if math.IsInf(minX, 1) {
 		return -72, -72, 72, 72

@@ -222,19 +222,17 @@ func (m *SettingsModel) viewExtreme() string {
 		"",
 	}
 
-	b.WriteString(m.renderList(len(extremeItems), func(i int) string {
-		return renderRow(i == m.cursor, extremeItems[i], values[i], 24, m.width)
-	}))
-
-	b.WriteString(note(extremeHelp, m.cursor, m.width))
-
-	b.WriteString("\n")
+	var tail strings.Builder
+	tail.WriteString(note(extremeHelp, m.cursor, m.width))
+	tail.WriteString("\n")
 	for _, line := range wrap(extremeWarning, textWidth(m.width)) {
-		b.WriteString("  " + errStyle.Render(line) + "\n")
+		tail.WriteString("  " + errStyle.Render(line) + "\n")
 	}
+	tail.WriteString("\n" + helpStyle.Render("  "+fit("enter choose · esc back", textWidth(m.width))) + "\n")
 
-	b.WriteString("\n" + helpStyle.Render("  "+fit("enter choose · esc back", textWidth(m.width))) + "\n")
-	return b.String()
+	return m.fill(b.String(), tail.String(), len(extremeItems), func(i int) string {
+		return renderRow(i == m.cursor, extremeItems[i], values[i], 24, m.width)
+	})
 }
 
 // extremeStatusLines says what would happen on the next deploy, which is the

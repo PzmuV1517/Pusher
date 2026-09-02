@@ -1,6 +1,7 @@
 package extreme
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -160,21 +161,30 @@ func kotlinTasks(block string) string {
 ` + block
 }
 
-// PowerPackage is the generated power monitor, which has to stay in the APK.
+// PowerPackage and ProfilePackage are the generated diagnostics, which have to
+// stay in the APK.
 //
-// Its entry point is a startup hook the robot controller calls when the web
+// Their entry point is a startup hook the robot controller calls when the web
 // server comes up. Reloaded classes are scanned long after that has happened,
-// so a monitor that is not in the APK is collected and never called: it would
-// sit there looking installed and measure nothing.
-const PowerPackage = TeamPackage + "/pusherpower"
+// so one that is not in the APK is collected and never called: it would sit
+// there looking installed and measure nothing.
+//
+// Named here rather than imported from the packages that generate them, because
+// those import this one to find out where team code lives.
+const (
+	PowerPackage   = TeamPackage + "/pusherpower"
+	ProfilePackage = TeamPackage + "/pusherprofile"
+)
 
 // alwaysKept is what has to be in the APK whatever the keep list says, when it
 // is in the project at all.
 func alwaysKept(root string) []string {
 	var out []string
 
-	if _, err := os.Stat(filepath.Join(root, SourceRoot, filepath.FromSlash(PowerPackage))); err == nil {
-		out = append(out, PowerPackage)
+	for _, pkg := range []string{PowerPackage, ProfilePackage} {
+		if _, err := os.Stat(filepath.Join(root, SourceRoot, filepath.FromSlash(pkg))); err == nil {
+			out = append(out, pkg)
+		}
 	}
 
 	return out
@@ -234,6 +244,13 @@ func KotlinDSL(root string) bool {
 func Supported(root string) error {
 	if _, err := os.Stat(GradleFile(root)); err != nil {
 		return fmt.Errorf("no %s to add the exclusion to", filepath.Join(Module, "build.gradle"))
+	}
+
+	// Refused rather than warned about. Two reload systems on one robot is the
+	// failure that empties the OpMode list, and it outlives uninstalling
+	// pusher, so it has to be stopped before anything is written.
+	if UsesSloth(root) {
+		return errors.New(slothRefusal)
 	}
 
 	return nil

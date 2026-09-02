@@ -1,8 +1,10 @@
 package robotcfg
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -162,5 +164,50 @@ func TestHashMatchesWhatMd5sumWouldSay(t *testing.T) {
 
 	if got := Hash([]byte("test")); got != "098f6bcd4621d373cade4e832627b4f6" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// A push that reports success and leaves nothing the robot can use is the
+// failure this exists to catch, so the check has to notice each way it can
+// happen rather than trusting adb's exit code.
+var errNotThere = errors.New("no such file")
+
+func TestVerifyNoticesWhatWentWrong(t *testing.T) {
+	const name = "comp"
+	sent := []byte("<Robot><Motor/></Robot>")
+
+	for _, tc := range []struct {
+		name string
+		got  []byte
+		err  error
+		list []string
+		want string
+	}{
+		{"it arrived intact", sent, nil, []string{"comp"}, ""},
+		{"trailing newline is not a difference", append(sent, '\n'), nil, []string{"comp"}, ""},
+		{"it cannot be read back", nil, errNotThere, nil, "cannot be read back"},
+		{"it arrived truncated", sent[:5], nil, []string{"comp"}, "different contents"},
+		{"it is not in the robot's list", sent, nil, []string{"other"}, "not in the robot's list"},
+	} {
+		err := checkPushed(name, sent, tc.got, tc.err, tc.list, nil)
+
+		switch {
+		case tc.want == "" && err != nil:
+			t.Errorf("%s: %v", tc.name, err)
+		case tc.want != "" && err == nil:
+			t.Errorf("%s: accepted a push that went wrong", tc.name)
+		case tc.want != "" && err != nil && !strings.Contains(err.Error(), tc.want):
+			t.Errorf("%s: said %q, want something about %q", tc.name, err, tc.want)
+		}
+	}
+}
+
+// A robot that will not answer a listing is not evidence the push failed, so it
+// is not reported as one: the file was already read back byte for byte.
+func TestAnUnlistableRobotIsNotAFailedPush(t *testing.T) {
+	sent := []byte("<Robot/>")
+
+	if err := checkPushed("comp", sent, sent, nil, nil, errNotThere); err != nil {
+		t.Errorf("a failed listing was treated as a failed push: %v", err)
 	}
 }

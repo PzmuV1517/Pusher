@@ -7,9 +7,166 @@ grouping invented afterwards.
 
 Anything not listed is in `git log`, which is the complete record.
 
-## Unreleased
+## 1.3.0
 
-Nothing yet.
+- **The robot can join your Wi-Fi, so deploying stops meaning switching
+  networks.** Plug a USB Wi-Fi adapter into the Control Hub, run `pusher relay
+  setup "YourWiFi" "password"`, and the hub joins your network while still
+  serving its own access point to the Driver Station. Deploys, both dashboards
+  and the Limelight then work over the network you were already on.
+
+  Inspired by Dhruv, FTC 32001L, whose ADB relay bridged adb from the robot's
+  access point to the local network with a Linux box in between. The want is
+  theirs; this reaches it from the other end.
+
+  The hub's own radio cannot do this: it is the access point, and the SDK has no
+  client mode for it. So a second radio is needed, and a driver for it, and a
+  driver is compiled against one exact kernel and cannot be downloaded. Pusher
+  therefore carries six, built from the kernel source REV publishes — one per
+  Control Hub OS release from 1.0.0 to 1.1.6 — and picks by OS release, falling
+  back to any built for the same kernel, which is what the hub itself checks. A
+  hub it has nothing for is told so by name, with a link to ask for one.
+
+  It stays. A boot hook rejoins the network on every power cycle and watches
+  from then on: unplug the adapter and put it back and the robot is on the
+  network again within half a minute, without a laptop. `pusher relay forget`
+  takes all of it off.
+
+  **Networks are browsed rather than typed.** The robot scans from where it is
+  sitting, which is the only vantage point that matters, and reports what it can
+  hear with signal, band and whether it is open. Networks it has joined before
+  are remembered, so a workshop and a venue are a choice rather than a retype.
+
+  When the robot is somewhere on your network already, pusher finds it: the
+  address it was last at, then the hub's own access point, then a sweep. A sweep
+  only walks a subnet small enough to be somebody's own network, and something
+  answering on the adb port is not enough to be treated as a robot — pusher asks
+  the device what it is and leaves it alone if it turns out to be a phone.
+
+- **`pusher ip`** asks the robot where it is and knocks on every door: its
+  addresses, its hostname and `.local` name when this network resolves one, and
+  the hub's manage page, FtcDashboard, Panels, the Panels socket and the
+  Limelight through the Panels proxy. Only what actually answered is reported,
+  so an address printed there is one that can be pasted into a browser. Ports
+  read out of the published artifacts rather than from memory.
+
+- **A flame chart of where the loop time goes.** The power monitor says what the
+  battery is going into; this says where the time is going, which is the other
+  half of the same question. Turn **Loop profiler** on in `pusher settings`,
+  deploy, run an OpMode, then `pusher profile`. Nothing is instrumented and no
+  OpMode is edited: a thread wakes every few milliseconds, asks the thread
+  running the OpMode what it is in the middle of, and files the answer, so time
+  is counted in samples. Each bar on the chart is as wide as the share of the
+  run spent inside that method and everything it called, your own code is drawn
+  in blue, and clicking a bar zooms into it. The table ranks by time spent in a
+  method rather than under it, which is the difference between the code that was
+  running and a list of everything that called it. The page says how much of the
+  run the sampler actually got, because a profile that stands for a third of a
+  run should not look like one that stands for all of it. It costs loop time,
+  says so on every deploy, and is not for matches.
+
+- **The menus stop drawing over themselves.** The repeated entry had two causes,
+  and the first one happens before a key is pressed: bubbletea draws one frame
+  before it handles the first resize, and the menus started out believing they
+  had twenty four rows. In a fourteen row panel that first frame scrolled the
+  terminal ten rows out from under the renderer, which had been counting from
+  where it started, so every repaint after that landed at the wrong height and
+  left rows of old frames on screen. Nothing is drawn now until the terminal has
+  said how big it is.
+
+  The second is that a frame exactly as tall as the window scrolls it as the
+  last line is written, which puts the renderer one row out for the same reason.
+  Every frame now leaves a row spare, which is what the lists padding themselves
+  out to fill the window exactly had taken away.
+
+- **The menus stop changing height as you move through them.** Going down a list
+  and back up was enough to break them, and the shape was always the same: the
+  block grew a row the moment a scroll marker appeared and lost one again at
+  either end, so the whole view changed height as the cursor moved. The footer
+  walked up and down the screen and a frame that had been taller left its bottom
+  rows behind. Every list is now padded to a fixed height, the room for a status
+  message is reserved whether or not there is one, and the six screens that had
+  their own copy of the layout code use the one that measures rather than
+  guesses. The hardware configuration menu had the same fault and its own copy
+  again, and on a short terminal it overflowed outright: fourteen rows into ten.
+
+  Moving the cursor now only moves the cursor. There used to be a second answer
+  for where the window sits, computed on the keypress from a guessed chrome
+  height, which the render then disagreed with and corrected. That is most of
+  what made these menus feel unpredictable to move around in.
+
+- **The path visualiser draws the run, not just the plan.** Every recorded
+  position was counted in the caption and then thrown away, so the page drew the
+  route the robot was asked to follow and called it the run. The driven path is
+  now the solid line, taken from the robot's own positions in the order it
+  recorded them and coloured by the speed it was really doing, with the planned
+  path dashed underneath, so the gap between them is the following error. The
+  view is sized to include both, since a run that overshot went outside the
+  planned area by definition.
+
+- **Straight legs are estimated again.** blob describes a straight leg with the
+  only two points it needs, its ends, and both of those are stationary, so the
+  model treated it as a segment that was stopped everywhere it had a point.
+  Every straight leg estimated zero, which took the run's estimate, every peak
+  and the whole colour scale with it: a page reporting `0.00 s` against a
+  measured `28.97`, `-100%`, and a speed ramp topping out at 1 in/s. Curves are
+  resampled before profiling, which is exact for a line and lets the heat map
+  show the acceleration along one. The demo trace hid this for the life of the
+  feature by sampling even its straight legs 49 times; it now records them the
+  way blob does.
+
+- **Pusher Extreme will not set up alongside Sloth.** Both reload team code onto
+  the robot and both install a class loader for it, so the robot ends up holding
+  two copies and loading whichever it reaches first. Traced from a team's robot
+  log: Sloth's loader picked up the dex pusher had left in the OnBotJava jars
+  directory nine hours earlier, every one of their fifteen classes failed to
+  define because the copy pusher ships carries team code alone and the library
+  those classes extend was not reachable from that loader, and the Driver
+  Station listed no OpModes at all. It survives uninstalling pusher, the broken
+  copy being on the robot rather than the laptop. Setup is now refused, and
+  `pusher doctor` names the pairing for a project already in that state.
+
+- **A reload nobody could check says so.** The check that the robot actually
+  registered what a reload sent asked FtcDashboard, and said nothing at all when
+  it could not ask, on the grounds that a dashboard is not a requirement. That
+  is exactly backwards for a check whose whole purpose is the deploy that did
+  not work, and the team it happened to ran Panels. A reload that cannot be
+  verified now says which OpModes went unchecked and how to check them.
+
+- **Panels is supported alongside FtcDashboard.** `pusher dash diff`, the
+  dashboard watch and the post-reload check all ask both, because a team runs
+  one or the other and which one is not something a laptop can tell without
+  asking. Read out of the published AARs rather than from documentation: Panels
+  serves a WebSocket on 8002, frames are `{pluginID, messageID, data}`, and the
+  OpMode list and the tunables arrive unasked for when a client connects. Panels
+  reports fully qualified class names where FtcDashboard reports simple ones,
+  so its values are keyed the same way the source is and the comparison does not
+  care which answered. `@Configurable` classes are read like `@Config` ones.
+
+- **Anything that needs the robot offers to go and get it.** `pusher power`,
+  `pusher hwconfig`, `pusher dash diff` and the visualiser stopped at "no robot
+  connected - run `pusher connect`", which is one command telling you to run a
+  second command so you can run the first one again. They now say what network
+  they would join and ask, and connect if you say yes. Declining leaves the
+  error exactly as it was, and a pusher running in a script is never asked
+  anything: it gets the error it always got.
+
+  The menus make the same offer with a key, since there is nowhere in a menu to
+  print a question or read an answer. The hardware configuration menu, Power
+  readings, the run picker and the developer menu say what would be joined and
+  take `c`, then go back for whatever they could not read.
+
+- **`pusher hwconfig push` checks that the robot got what it was sent.** Every
+  configuration is read back and compared byte for byte, and the robot's own
+  list is checked for the name. A push that adb reported as fine but that left
+  nothing usable behind now fails where it happens instead of turning up later
+  as a configuration that never appears.
+
+- **`--restart`** on that push restarts the robot controller afterwards. The
+  robot controller lists the directory afresh whenever it is asked, so a pushed
+  configuration is there the next time the Driver Station asks; what it does not
+  do is notice one appearing underneath a screen that is already open. Pushing
+  now says so, and `--restart` settles it.
 
 ## 1.2.25
 

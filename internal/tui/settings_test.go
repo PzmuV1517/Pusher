@@ -124,17 +124,13 @@ func TestClampOffsetAlwaysKeepsCursorVisible(t *testing.T) {
 	}
 }
 
-func TestRenderListShowsContinuationMarkers(t *testing.T) {
-	m := &SettingsModel{height: defaultHeight, screen: screenHomeNetwork}
-	m.networks = make([]string, 40)
-	for i := range m.networks {
-		m.networks[i] = "net"
-	}
+// A windowed list has to say that it is windowed, or the entries below the fold
+// simply do not exist as far as anybody can tell.
+func TestAWindowedListSaysItContinues(t *testing.T) {
+	m := &SettingsModel{height: 14, width: 80, screen: screenHomeNetwork}
+	row := func(int) string { return "row\n" }
 
-	row := func(i int) string { return "row\n" }
-
-	m.offset = 0
-	top := stripANSI(m.renderList(40, row))
+	top := stripANSI(m.fill("", "", 40, row))
 	if strings.Contains(top, "more above") {
 		t.Error("a list at the top should not claim rows above it")
 	}
@@ -142,22 +138,51 @@ func TestRenderListShowsContinuationMarkers(t *testing.T) {
 		t.Error("a truncated list must show that it continues below")
 	}
 
-	m.offset = 10
-	middle := stripANSI(m.renderList(40, row))
+	m.cursor = 20
+	middle := stripANSI(m.fill("", "", 40, row))
 	if !strings.Contains(middle, "more above") || !strings.Contains(middle, "more below") {
 		t.Errorf("a mid-list window needs both markers, got:\n%s", middle)
 	}
 
-	short := stripANSI(m.renderList(3, row))
+	m.cursor = 0
+	short := stripANSI(m.fill("", "", 3, row))
 	if strings.Contains(short, "more above") || strings.Contains(short, "more below") {
 		t.Errorf("a list that fits should have no markers, got:\n%s", short)
 	}
 }
 
-func TestVisibleRowsStaysUsableInAShortTerminal(t *testing.T) {
-	m := &SettingsModel{height: 5}
-	if got := m.visibleRows(); got < minVisibleRows {
-		t.Errorf("a short terminal should still show %d rows, got %d", minVisibleRows, got)
+// The block is the same height wherever the cursor is, markers or no markers.
+// A menu that changes height as you move through it walks its own footer up and
+// down the screen and leaves the taller frame's bottom rows behind, which is
+// what going down a list and back up used to do to it.
+func TestAListIsTheSameHeightWhereverTheCursorIs(t *testing.T) {
+	const width, tall = 80, 14
+
+	m := &SettingsModel{height: tall, width: width, screen: screenHomeNetwork}
+	row := func(int) string { return "row\n" }
+
+	want := -1
+	for _, cursor := range []int{0, 1, 5, 20, 39, 20, 5, 1, 0} {
+		m.cursor = cursor
+
+		got := height(m.fill("", "", 40, row), width)
+		if want < 0 {
+			want = got
+			continue
+		}
+		if got != want {
+			t.Fatalf("cursor %d: block is %d rows, was %d", cursor, got, want)
+		}
+	}
+}
+
+// A terminal too short for the list still has to show some of it.
+func TestAShortTerminalStillShowsRows(t *testing.T) {
+	m := &SettingsModel{height: 5, width: 80, screen: screenHomeNetwork}
+
+	block := stripANSI(m.fill("", "", 40, func(int) string { return "row\n" }))
+	if strings.Count(block, "row") < 1 {
+		t.Errorf("a five row terminal showed no entries at all:\n%s", block)
 	}
 }
 
@@ -210,11 +235,19 @@ func TestMenuHeightDoesNotChangeAsTheCursorMoves(t *testing.T) {
 			}
 		}
 
-		// And it has to fit, with room for the title and a status line.
-		if first+4 > defaultHeight {
-			t.Errorf("%s is %d lines, which overflows a %d line terminal",
-				screen.name, first, defaultHeight)
+		// And the whole view has to fit the terminal, with a status line and
+		// without one: the body claims the room a status is not using, and has
+		// to give it back when one appears.
+		for _, status := range []string{"", "Saved"} {
+			m.status = status
+			m.cursor = 0
+
+			if got := renderedRows(m.View(), defaultWidth); got >= defaultHeight {
+				t.Errorf("%s with status %q is %d rows of a %d row terminal",
+					screen.name, status, got, defaultHeight)
+			}
 		}
+		m.status = ""
 	}
 }
 

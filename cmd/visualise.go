@@ -76,7 +76,12 @@ func runVisualise(cmd *cobra.Command, args []string) error {
 		return tui.RunTracePicker(visProject, limits)
 	}
 
-	serial, traces, err := visual.List()
+	serial, err := requireRobot()
+	if err != nil {
+		return err
+	}
+
+	_, traces, err := visual.ListOn(serial)
 	if err != nil {
 		return err
 	}

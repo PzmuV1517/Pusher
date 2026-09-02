@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/gradle"
 	"github.com/andreibanu/pusher/internal/robotcfg"
 	"github.com/andreibanu/pusher/internal/tui"
@@ -21,6 +20,7 @@ var (
 	hwDir      string
 	hwForce    bool
 	hwNoBackup bool
+	hwRestart  bool
 	hwYes      bool
 	hwRaw      bool
 )
@@ -133,6 +133,7 @@ func init() {
 
 	hwPushCmd.Flags().BoolVar(&hwForce, "force", false, "Push even if a configuration has errors")
 	hwPushCmd.Flags().BoolVar(&hwNoBackup, "no-backup", false, "Do not save the robot's copy before overwriting it")
+	hwPushCmd.Flags().BoolVar(&hwRestart, "restart", false, "Restart the robot controller afterwards, so the list is rebuilt")
 	hwEditCmd.Flags().BoolVar(&hwYes, "yes", false, "Push when the edit checks out, without asking")
 	hwRemoveCmd.Flags().BoolVarP(&hwYes, "yes", "y", false, "Delete without asking")
 	hwViewCmd.Flags().BoolVar(&hwRaw, "raw", false, "Print the file instead of a summary")
@@ -181,7 +182,7 @@ func runHWList(cmd *cobra.Command, args []string) error {
 		active     string
 		serial     string
 	)
-	if serial, err = adb.Target(); err == nil {
+	if serial, err = requireRobot(); err == nil {
 		robotNames, err = robotcfg.List(serial)
 		if err != nil {
 			fmt.Printf("[!] Could not read the robot's configurations: %v\n\n", err)
@@ -266,7 +267,7 @@ func runHWPull(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	serial, err := adb.Target()
+	serial, err := requireRobot()
 	if err != nil {
 		return err
 	}
@@ -347,7 +348,7 @@ func runHWPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("nothing was pushed: fix the errors above, or use --force to push anyway")
 	}
 
-	serial, err := adb.Target()
+	serial, err := requireRobot()
 	if err != nil {
 		return err
 	}
@@ -377,14 +378,36 @@ func runHWPush(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	if replacedActive {
 
+	// Every file was read back off the robot before getting here, so it is
+	// there and it is right. What is left is whether anything asked the robot
+	// again, which is a question about the Driver Station rather than the file.
+	if hwRestart {
+		pkg := robotcfg.ControllerPackage(serial)
+		if pkg == "" {
+			fmt.Println("[!] Could not find the robot controller app to restart.")
+		} else if err := robotcfg.Restart(serial, pkg); err != nil {
+			fmt.Printf("[!] Could not restart the robot controller: %v\n", err)
+		} else {
+			fmt.Printf("[OK] Restarted %s, so it has rescanned the directory.\n\n", pkg)
+		}
+	}
+
+	if replacedActive {
 		fmt.Printf("[!] %q is the configuration the robot is running.\n", active)
 		fmt.Println("    It keeps the old wiring until you re-select it:")
 		fmt.Println("    Driver Station -> Configure Robot -> pick it -> Activate.")
 	} else {
 		fmt.Println("[*] Select it on the Driver Station to use it:")
 		fmt.Println("    Configure Robot -> pick it -> Activate.")
+	}
+
+	if !hwRestart {
+		fmt.Println()
+		fmt.Println("[*] Not in the list? The Driver Station shows the list it was given when")
+		fmt.Println("    it last asked, so one that appeared underneath it is not there yet.")
+		fmt.Println("    Leave the config screen and open it again, or run this with --restart")
+		fmt.Println("    to restart the robot controller and settle it.")
 	}
 
 	return nil
@@ -428,7 +451,7 @@ func runHWEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	if !local.Has(name) {
-		serial, err := adb.Target()
+		serial, err := requireRobot()
 		if err != nil {
 			return fmt.Errorf("%q is not in %s, and pusher cannot reach the robot to fetch it: %w",
 				name, local.Dir, err)
@@ -503,7 +526,7 @@ func runHWDiff(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	serial, err := adb.Target()
+	serial, err := requireRobot()
 	if err != nil {
 		return err
 	}
@@ -605,7 +628,7 @@ func runHWCheck(cmd *cobra.Command, args []string) error {
 func runHWRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	serial, err := adb.Target()
+	serial, err := requireRobot()
 	if err != nil {
 		return err
 	}
@@ -645,7 +668,7 @@ func readAnywhere(name string) ([]byte, string, error) {
 		return data, local.Path(name), err
 	}
 
-	serial, err := adb.Target()
+	serial, err := requireRobot()
 	if err != nil {
 		return nil, "", fmt.Errorf("%q is not in the project, and pusher cannot reach the robot: %w", name, err)
 	}
