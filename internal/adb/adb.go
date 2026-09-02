@@ -3,6 +3,7 @@ package adb
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -16,6 +17,15 @@ const (
 
 	remoteAPKPath = "/data/local/tmp/pusher_app.apk"
 )
+
+// ErrNoRobot means nothing is attached: no hub over USB, and no adb connection
+// over Wi-Fi. Callers that can do something about it, like offering to join the
+// robot's network, test for this rather than reading the message.
+var ErrNoRobot = errors.New("no robot connected")
+
+// ErrNoADB means the platform tools are missing, which is the one reason for
+// having no robot that connecting cannot fix.
+var ErrNoADB = errors.New("adb not found")
 
 // Transport is how a device is attached.
 type Transport string
@@ -173,20 +183,27 @@ func run(serial string, args ...string) (string, error) {
 }
 
 // Connect establishes an adb connection to the robot over Wi-Fi, retrying.
-func Connect() error {
+func Connect() error { return ConnectTo(os.Stdout) }
+
+// ConnectTo is Connect, saying what it is doing to a caller's writer.
+//
+// A menu cannot let this print to stdout: bubbletea owns the screen, and six
+// lines of retry chatter painted over a menu stay there for the rest of the
+// session.
+func ConnectTo(out io.Writer) error {
 	if !IsInstalled() {
-		return fmt.Errorf("adb not found - please install Android SDK Platform-Tools")
+		return fmt.Errorf("%w - please install Android SDK Platform-Tools", ErrNoADB)
 	}
 
 	addr := RobotAddr()
-	fmt.Printf("[*] Attempting ADB connection to %s...\n", addr)
+	fmt.Fprintf(out, "[*] Attempting ADB connection to %s...\n", addr)
 
 	maxRetries := 5
 	var lastErr error
 
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
-			fmt.Printf("[*] ADB retry %d/%d...\n", i+1, maxRetries)
+			fmt.Fprintf(out, "[*] ADB retry %d/%d...\n", i+1, maxRetries)
 			time.Sleep(3 * time.Second)
 		}
 

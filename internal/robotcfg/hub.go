@@ -1,6 +1,7 @@
 package robotcfg
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
@@ -151,6 +152,95 @@ func Send(serial, name string, data []byte) error {
 
 	if err := adb.Push(serial, local.Name(), RemotePath(name)); err != nil {
 		return fmt.Errorf("cannot write %q to the robot: %w", name, err)
+	}
+
+	return verify(serial, name, data)
+}
+
+// verify reads the configuration back and checks the robot has what it was
+// sent.
+//
+// A push that reports success and leaves nothing usable behind is the failure
+// worth catching here: adb exits zero having written a file the robot cannot
+// read, or writes it somewhere the robot controller does not look, and the only
+// symptom is a configuration that never appears in the list. Reading it back
+// turns that into an error at the moment it happens.
+func verify(serial, name string, sent []byte) error {
+	got, readErr := Fetch(serial, name)
+	names, listErr := List(serial)
+
+	return checkPushed(name, sent, got, readErr, names, listErr)
+}
+
+// checkPushed decides whether the robot ended up with what it was sent.
+//
+// Separated from the fetching so the decision can be tested without a robot,
+// which is the half that has been wrong.
+func checkPushed(name string, sent, got []byte, readErr error, names []string, listErr error) error {
+	if readErr != nil {
+		return fmt.Errorf("%q was pushed but cannot be read back: %w\n"+
+			"    The robot controller will not see it either", name, readErr)
+	}
+
+	// Trailing whitespace is not a difference worth failing on: the robot
+	// controller rewrites these itself and is not fussy about the last byte.
+	if !bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(sent)) {
+		return fmt.Errorf("%q arrived on the robot with different contents (%d bytes sent, %d read back)",
+			name, len(sent), len(got))
+	}
+
+	// A robot that will not answer a listing is not evidence of a failed push,
+	// and the file has already been read back byte for byte.
+	if listErr != nil {
+		return nil
+	}
+
+	for _, n := range names {
+		if n == name {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%q was written to %s but is not in the robot's list of configurations.\n"+
+		"    The robot controller reads that directory directly, so this means the\n"+
+		"    file is not where it looks", name, RemotePath(name))
+}
+
+// ControllerPackage finds the robot controller app on the device.
+func ControllerPackage(serial string) string {
+	out, err := adb.Shell(serial, "pm", "list", "packages", "2>/dev/null")
+	if err != nil {
+		return ""
+	}
+
+	for _, line := range strings.Split(out, "\n") {
+		name := strings.TrimPrefix(strings.TrimSpace(strings.TrimRight(line, "\r")), "package:")
+		if strings.Contains(name, "ftcrobotcontroller") {
+			return name
+		}
+	}
+	return ""
+}
+
+// Restart restarts the robot controller app.
+//
+// The robot controller lists the directory afresh whenever it is asked, so a
+// pushed configuration is normally there the next time the Driver Station opens
+// the list. What it does not do is notice one appearing underneath it, so a
+// Driver Station already showing the list goes on showing the old one. This is
+// the blunt instrument that settles it.
+func Restart(serial, pkg string) error {
+	if pkg == "" {
+		return fmt.Errorf("no robot controller package to restart")
+	}
+
+	if _, err := adb.Shell(serial, "am", "force-stop", pkg); err != nil {
+		return fmt.Errorf("cannot stop %s: %w", pkg, err)
+	}
+
+	if _, err := adb.Shell(serial, "monkey", "-p", pkg, "-c",
+		"android.intent.category.LAUNCHER", "1", ">/dev/null", "2>&1"); err != nil {
+		return fmt.Errorf("cannot start %s again: %w", pkg, err)
 	}
 
 	return nil

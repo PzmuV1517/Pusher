@@ -23,7 +23,12 @@ func List() (string, []adb.RemoteTrace, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	return ListOn(serial)
+}
 
+// ListOn is List for a robot the caller has already found, so somewhere that
+// had to go and connect first does not look it up twice.
+func ListOn(serial string) (string, []adb.RemoteTrace, error) {
 	traces, err := adb.ListTraces(serial)
 	if err != nil {
 		return serial, nil, err

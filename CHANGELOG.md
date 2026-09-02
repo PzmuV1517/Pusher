@@ -9,7 +9,30 @@ Anything not listed is in `git log`, which is the complete record.
 
 ## Unreleased
 
-Nothing yet.
+- **Anything that needs the robot offers to go and get it.** `pusher power`,
+  `pusher hwconfig`, `pusher dash diff` and the visualiser stopped at "no robot
+  connected - run `pusher connect`", which is one command telling you to run a
+  second command so you can run the first one again. They now say what network
+  they would join and ask, and connect if you say yes. Declining leaves the
+  error exactly as it was, and a pusher running in a script is never asked
+  anything: it gets the error it always got.
+
+  The menus make the same offer with a key, since there is nowhere in a menu to
+  print a question or read an answer. The hardware configuration menu, Power
+  readings, the run picker and the developer menu say what would be joined and
+  take `c`, then go back for whatever they could not read.
+
+- **`pusher hwconfig push` checks that the robot got what it was sent.** Every
+  configuration is read back and compared byte for byte, and the robot's own
+  list is checked for the name. A push that adb reported as fine but that left
+  nothing usable behind now fails where it happens instead of turning up later
+  as a configuration that never appears.
+
+- **`--restart`** on that push restarts the robot controller afterwards. The
+  robot controller lists the directory afresh whenever it is asked, so a pushed
+  configuration is there the next time the Driver Station asks; what it does not
+  do is notice one appearing underneath a screen that is already open. Pushing
+  now says so, and `--restart` settles it.
 
 ## 1.2.25
 

@@ -41,7 +41,7 @@ func init() {
 }
 
 func runDashDiff(cmd *cobra.Command, args []string) error {
-	serial, err := dash.Robot()
+	serial, err := requireRobot()
 	if err != nil {
 		return err
 	}

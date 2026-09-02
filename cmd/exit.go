@@ -6,6 +6,7 @@ import (
 
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
+	"github.com/andreibanu/pusher/internal/robot"
 	"github.com/andreibanu/pusher/internal/wifi"
 	"github.com/spf13/cobra"
 )
@@ -41,7 +42,7 @@ func runExit(cmd *cobra.Command, args []string) error {
 	home := config.GetHomeSSID()
 	if home == "" {
 
-		if inferred, err := wifiMgr.MostRecentNetwork(robotSSIDs()...); err == nil && inferred != "" {
+		if inferred, err := wifiMgr.MostRecentNetwork(robot.SSIDs()...); err == nil && inferred != "" {
 			home = inferred
 			fmt.Printf("\n[*] Assuming you came from %q\n", home)
 		}

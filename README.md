@@ -108,6 +108,15 @@ Requires `adb` and an FTC project with a Gradle wrapper.
 | `pusher prepare` | Cache Gradle dependencies while online |
 | `pusher help` | Help |
 
+Anything that needs the robot will offer to go and get it. Run `pusher power` or
+`pusher hwconfig` with nothing attached and it names the network it would join
+and asks; say no and you get the error you would have got anyway. Nothing is
+asked when pusher is not running in a terminal, so scripts behave as before.
+
+The menus offer the same thing with a key, since a menu has nowhere to print a
+question: where a screen needs the robot and has none, `c` joins and connects,
+and the screen goes back for whatever it could not read.
+
 ## Settings
 
 `pusher settings` opens a menu covering robot profiles, which network to return
@@ -306,6 +315,17 @@ not have, an Expansion Hub on the address reserved for the Control Hub. Errors
 stop the push (`--force` overrides); anything pusher is unsure about is a
 warning. Device types it does not recognise, your own OnBotJava or external
 library drivers, still have their names checked but are left alone otherwise.
+
+**Pushes are checked.** Every configuration is read back off the robot and
+compared byte for byte, and the robot's own list is checked for the name. A push
+that adb reported as fine but that left nothing usable behind now fails at the
+moment it happens rather than turning up as a configuration that never appears.
+
+**Not in the list on the Driver Station?** The robot controller reads that
+directory afresh whenever it is asked, but the Driver Station shows the list it
+was given when it last asked. A configuration that appeared underneath it is not
+there yet. Leave the config screen and open it again, or push with `--restart`,
+which restarts the robot controller so the list is rebuilt.
 
 **Overwriting is guarded.** The robot's copy of anything about to be replaced is
 saved into `configs/.pusher-backup/` first, because it may have been changed on

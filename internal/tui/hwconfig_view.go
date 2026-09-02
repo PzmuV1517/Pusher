@@ -34,9 +34,19 @@ func (m *hwModel) View() string {
 		b.WriteString(m.viewHWSummary())
 	}
 
+	// The offer outranks the error it came with, and is not a success: a tick
+	// next to "no robot connected" reads as pusher being pleased about it.
 	switch {
 	case m.busy != "":
 		b.WriteString("\n" + scrollStyle.Render("  … "+m.busy) + "\n")
+
+	case m.connect.open:
+		b.WriteString("\n")
+		if m.err != nil {
+			b.WriteString(errStyle.Render("  ! "+m.err.Error()) + "\n")
+		}
+		b.WriteString(helpStyle.Render("  "+m.connect.hint()) + "\n")
+
 	case m.err != nil:
 		b.WriteString("\n" + errStyle.Render("  ! "+m.err.Error()) + "\n")
 	case m.status != "":

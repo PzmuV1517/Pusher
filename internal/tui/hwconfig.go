@@ -146,6 +146,7 @@ type hwModel struct {
 	confirm hwConfirm
 
 	loading bool
+	connect connectOffer
 	busy    string
 	status  string
 	err     error
@@ -158,6 +159,11 @@ type hwLoadedMsg struct {
 	hashes map[string]string
 	active string
 	err    error
+}
+
+// hwConnectedMsg is the outcome of the menu going and getting the robot.
+type hwConnectedMsg struct {
+	err error
 }
 
 type hwOpMsg struct {
@@ -270,11 +276,29 @@ func (m *hwModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.hashes = msg.hashes
 		m.active = msg.active
 
-		if msg.err != nil {
+		// The offer is rendered on its own, so putting it in the status line
+		// too would say it twice, once of them in the register of good news.
+		m.connect.consider(msg.err)
+		if msg.err != nil && !m.connect.open {
 			m.status = "No robot connected. " + msg.err.Error()
 		}
+
 		m.rebuildEntries()
 		return m, nil
+
+	case hwConnectedMsg:
+		m.connect.busy = false
+		m.busy = ""
+
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+
+		// Connected, so everything this screen could not read is readable now.
+		m.connect.open = false
+		m.loading = true
+		return m, hwLoad
 
 	case hwOpMsg:
 		m.busy = ""
@@ -303,6 +327,17 @@ func (m *hwModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.busy != "" {
 		return m, nil
+	}
+
+	// Taken from any screen that is not reading typing, because a menu that
+	// could not reach the robot got here with half of itself missing, and the
+	// fix is the same wherever somebody has wandered to since.
+	if key.String() == "c" && m.connect.open && m.screen != hwScreenPrompt && m.screen != hwScreenDevice {
+		m.connect.busy = true
+		m.busy = m.connect.working()
+		m.err, m.status = nil, ""
+
+		return m, connect(func(err error) tea.Msg { return hwConnectedMsg{err: err} })
 	}
 
 	switch m.screen {

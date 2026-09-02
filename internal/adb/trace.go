@@ -34,9 +34,13 @@ func Push(serial, local, remote string) error {
 }
 
 // Target picks the robot to talk to, preferring USB the way deploying does.
+//
+// Both failures are wrapped sentinels rather than plain messages, because what
+// a caller should do about them differs: one is worth offering to fix, and the
+// other is somebody's afternoon with a package manager.
 func Target() (string, error) {
 	if !IsInstalled() {
-		return "", fmt.Errorf("adb not found - install Android SDK Platform-Tools")
+		return "", fmt.Errorf("%w - install Android SDK Platform-Tools", ErrNoADB)
 	}
 	if dev, ok := FindUSBDevice(); ok {
 		return dev.Serial, nil
@@ -44,7 +48,7 @@ func Target() (string, error) {
 	if IsConnected() {
 		return RobotAddr(), nil
 	}
-	return "", fmt.Errorf("no robot connected - plug in USB or run `pusher connect`")
+	return "", fmt.Errorf("%w - plug in USB or run `pusher connect`", ErrNoRobot)
 }
 
 // ListTraces returns the trace files on the device, newest first.

@@ -215,8 +215,41 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.power.serial = msg.serial
 		m.power.runs = msg.runs
 		m.power.err = msg.err
+		m.power.connect.consider(msg.err)
 		m.cursor, m.offset = 0, 0
+
+		// The offer stands in for the error, so showing both says the same
+		// thing twice in two registers.
+		if m.power.connect.open {
+			m.power.err = nil
+		}
 		return m, nil
+
+	case tracesConnectedMsg:
+		m.blob.tracCon.busy = false
+
+		if msg.err != nil {
+			m.blob.tracErr = msg.err
+			return m, nil
+		}
+
+		m.blob.tracCon.open = false
+		m.loadTraces()
+		m.cursor = 0
+		return m, nil
+
+	case powerConnectedMsg:
+		m.power.busy = false
+		m.power.connect.busy = false
+
+		if msg.err != nil {
+			m.power.err = msg.err
+			return m, nil
+		}
+
+		// Connected, so the list this screen could not read is readable now.
+		m.power.connect.open = false
+		return m, m.enterPower()
 
 	case powerReportMsg:
 		m.power.busy = false

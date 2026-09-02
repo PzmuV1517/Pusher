@@ -13,8 +13,9 @@ import (
 // it is doing instead of freezing while adb works.
 
 type powerState struct {
-	busy bool
-	err  error
+	busy    bool
+	err     error
+	connect connectOffer
 
 	serial string
 	runs   []power.Recording
@@ -29,6 +30,11 @@ type powerListMsg struct {
 type powerReportMsg struct {
 	path string
 	err  error
+}
+
+// powerConnectedMsg is the outcome of the menu going and getting the robot.
+type powerConnectedMsg struct {
+	err error
 }
 
 func (m *SettingsModel) enterPower() tea.Cmd {
@@ -70,6 +76,17 @@ func (m *SettingsModel) updatePower(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		return m, m.enterPower()
 
+	case "c":
+		if !m.power.connect.open || m.power.busy {
+			return m, nil
+		}
+
+		m.power.busy = true
+		m.power.connect.busy = true
+		m.power.err = nil
+
+		return m, connect(func(err error) tea.Msg { return powerConnectedMsg{err: err} })
+
 	case "up", "k":
 		m.moveCursor(-1, len(m.power.runs))
 	case "down", "j":
@@ -89,8 +106,26 @@ func (m *SettingsModel) viewPower() string {
 	var b strings.Builder
 
 	if m.power.busy {
-		b.WriteString(helpStyle.Render("  "+fit("Reading the robot...", textWidth(m.width))) + "\n")
+		doing := "Reading the robot..."
+		if m.power.connect.busy {
+			doing = m.power.connect.working()
+		}
+
+		b.WriteString(helpStyle.Render("  "+fit(doing, textWidth(m.width))) + "\n")
 		b.WriteString("\n" + helpStyle.Render("  "+fit("esc back", textWidth(m.width))) + "\n")
+		return b.String()
+	}
+
+	if m.power.connect.open {
+		for _, line := range wrap(m.power.connect.hint(), textWidth(m.width)) {
+			b.WriteString(helpStyle.Render("  "+line) + "\n")
+		}
+		if m.power.err != nil {
+			for _, line := range wrap(m.power.err.Error(), textWidth(m.width)) {
+				b.WriteString(errStyle.Render("  "+line) + "\n")
+			}
+		}
+		b.WriteString("\n" + helpStyle.Render("  "+fit("c connect · r retry · esc back", textWidth(m.width))) + "\n")
 		return b.String()
 	}
 

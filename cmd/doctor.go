@@ -11,6 +11,7 @@ import (
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/ftcproject"
 	"github.com/andreibanu/pusher/internal/gradle"
+	"github.com/andreibanu/pusher/internal/robot"
 	"github.com/andreibanu/pusher/internal/wifi"
 	"github.com/spf13/cobra"
 )
@@ -90,7 +91,7 @@ func reportWiFi() bool {
 	case errors.Is(ssidErr, wifi.ErrSSIDUnavailable):
 		fmt.Println("  Current network    : hidden by the OS")
 
-		inferred, _ := wifiMgr.MostRecentNetwork(robotSSIDs()...)
+		inferred, _ := wifiMgr.MostRecentNetwork(robot.SSIDs()...)
 		if inferred != "" {
 			fmt.Printf("  Inferred as        : %s\n", inferred)
 		} else {

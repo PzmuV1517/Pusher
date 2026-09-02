@@ -34,6 +34,7 @@ type blobState struct {
 	traces  []adb.RemoteTrace
 	serial  string
 	tracErr error
+	tracCon connectOffer
 
 	limits pathtrace.Limits
 }
@@ -371,6 +372,13 @@ func (m *SettingsModel) loadTraces() {
 	m.blob.serial = serial
 	m.blob.traces = traces
 	m.blob.tracErr = err
+
+	// The offer stands in for the error, so keeping both says the same thing
+	// twice in two registers.
+	m.blob.tracCon.consider(err)
+	if m.blob.tracCon.open {
+		m.blob.tracErr = nil
+	}
 }
 
 func (m *SettingsModel) updateBlobRuns(key tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -386,6 +394,16 @@ func (m *SettingsModel) updateBlobRuns(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.loadTraces()
 		m.cursor = 0
+
+	case "c":
+		if !m.blob.tracCon.open || m.blob.tracCon.busy {
+			return m, nil
+		}
+
+		m.blob.tracCon.busy = true
+		m.blob.tracErr = nil
+
+		return m, connect(func(err error) tea.Msg { return tracesConnectedMsg{err: err} })
 
 	case "up", "k":
 		m.moveCursor(-1, len(m.blob.traces))
@@ -503,6 +521,21 @@ func (m *SettingsModel) versionValue() string {
 
 func (m *SettingsModel) viewBlobRuns() string {
 	var b strings.Builder
+
+	if m.blob.tracCon.busy {
+		b.WriteString(helpStyle.Render("  "+m.blob.tracCon.working()) + "\n")
+		b.WriteString("\n" + helpStyle.Render("  esc back") + "\n")
+		return b.String()
+	}
+
+	if m.blob.tracCon.open {
+		b.WriteString(helpStyle.Render("  "+m.blob.tracCon.hint()) + "\n")
+		if m.blob.tracErr != nil {
+			b.WriteString(errStyle.Render("  "+m.blob.tracErr.Error()) + "\n")
+		}
+		b.WriteString("\n" + helpStyle.Render("  c connect · r retry · esc back") + "\n")
+		return b.String()
+	}
 
 	if m.blob.tracErr != nil {
 		for _, line := range strings.Split(m.blob.tracErr.Error(), "\n") {

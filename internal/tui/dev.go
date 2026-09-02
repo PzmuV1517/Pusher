@@ -136,6 +136,8 @@ type devModel struct {
 	status string
 	err    error
 	quit   bool
+
+	connect connectOffer
 }
 
 // reloadDoneMsg carries the hot reload attempt back to the menu.
@@ -177,12 +179,19 @@ func RunDev(projectRoot, apk string, splits []string) error {
 		splits:  splits,
 	}
 
-	if serial, err := adb.Target(); err == nil {
+	serial, err := adb.Target()
+	if err == nil {
 		m.serial = serial
 	}
+	m.connect.consider(err)
 
-	_, err := tea.NewProgram(m).Run()
+	_, err = tea.NewProgram(m).Run()
 	return err
+}
+
+// devConnectedMsg is the outcome of the menu going and getting the robot.
+type devConnectedMsg struct {
+	err error
 }
 
 // Init satisfies tea.Model.
@@ -216,6 +225,23 @@ func (m *devModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reload = msg.result
 		if msg.err == nil && msg.result != nil && msg.result.Err == nil {
 			m.screen = devScreenReload
+		}
+		return m, nil
+
+	case devConnectedMsg:
+		m.busy = ""
+
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+
+		// Every entry here needs the serial, so this is the one that unblocks
+		// the rest of the menu rather than producing anything itself.
+		if serial, err := adb.Target(); err == nil {
+			m.serial = serial
+			m.connect.open = false
+			m.status = "Connected to " + serial
 		}
 		return m, nil
 
@@ -258,6 +284,17 @@ func (m *devModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.quit = true
 		return m, tea.Quit
 
+	case "c":
+		if !m.connect.open {
+			return m, nil
+		}
+
+		m.busy = m.connect.working()
+		m.started = time.Now()
+		m.err, m.status = nil, ""
+
+		return m, connect(func(err error) tea.Msg { return devConnectedMsg{err: err} })
+
 	case "up", "k":
 		rows := m.layout().Rows
 		m.cursor = (m.cursor - 1 + len(rows)) % len(rows)
@@ -297,7 +334,7 @@ func (m *devModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *devModel) run(deploy, reload bool) tea.Cmd {
 	if m.serial == "" {
-		m.err = fmt.Errorf("no robot connected - plug in USB or run `pusher connect`")
+		m.err = noRobotHere(m.connect)
 		return nil
 	}
 	if m.apk == "" {
@@ -411,6 +448,9 @@ func (m *devModel) viewDevMain() string {
 	b.WriteString("\n")
 
 	robot := "no robot connected"
+	if m.connect.open {
+		robot = "no robot connected · press c to connect"
+	}
 	if m.serial != "" {
 		robot = "robot: " + m.serial
 	}
@@ -484,7 +524,7 @@ func DevTargets() (project, apk string, splits []string) {
 // change, not merely be present.
 func (m *devModel) tryReload() tea.Cmd {
 	if m.serial == "" {
-		m.err = fmt.Errorf("no robot connected - plug in USB or run `pusher connect`")
+		m.err = noRobotHere(m.connect)
 		return nil
 	}
 
@@ -631,7 +671,7 @@ func wrapAt(s string, width int) []string {
 // benchExtreme times a real reload of the project's own team code.
 func (m *devModel) benchExtreme() tea.Cmd {
 	if m.serial == "" {
-		m.err = fmt.Errorf("no robot connected - plug in USB or run `pusher connect`")
+		m.err = noRobotHere(m.connect)
 		return nil
 	}
 
@@ -695,7 +735,7 @@ func extremeSummary(r extreme.BenchResult) string {
 // that adb logcat loses.
 func (m *devModel) collectLogs() tea.Cmd {
 	if m.serial == "" {
-		m.err = fmt.Errorf("no robot connected - plug in USB or run `pusher connect`")
+		m.err = noRobotHere(m.connect)
 		return nil
 	}
 

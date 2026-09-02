@@ -12,13 +12,12 @@ import (
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/gradle"
+	"github.com/andreibanu/pusher/internal/robot"
 	"github.com/andreibanu/pusher/internal/updates"
 	"github.com/andreibanu/pusher/internal/wifi"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
-
-const joinTimeout = 45 * time.Second
 
 var pushCmd = &cobra.Command{
 	Use:   "push",
@@ -136,7 +135,7 @@ func pushOverWiFi(gradlePath string) error {
 
 	if !onRobot {
 		fmt.Printf("\n[>] Joining robot Wi-Fi: %s\n", profile.SSID)
-		ip, err := joinRobot(wifiMgr, watcher, profile)
+		ip, err := robot.Join(os.Stdout, wifiMgr, watcher, profile)
 		if err != nil {
 			return err
 		}
@@ -155,7 +154,7 @@ func pushOverWiFi(gradlePath string) error {
 
 	if leavingRobot {
 		fmt.Printf("\n[<] Returning to %s...\n", home)
-		if err := wifiMgr.Rejoin(home, robotSSIDs()); err != nil {
+		if err := wifiMgr.Rejoin(home, robot.SSIDs()); err != nil {
 			fmt.Printf("[!] Could not rejoin %s: %v\n", home, err)
 			fmt.Println("    You will need to switch back manually.")
 		} else if _, err := wifiMgr.WaitToLeave(wifi.RobotSubnet, 45*time.Second); err != nil {
@@ -323,22 +322,6 @@ func deployOnce(gradlePath, serial string) error {
 	// until the reload has run. Skipping it leaves a robot that deployed
 	// successfully and has nothing to run.
 	return reloadAfterInstall(serial)
-}
-
-func robotSSIDs() []string {
-	cfg, err := config.Load()
-	if err != nil {
-		return nil
-	}
-
-	ssids := make([]string, 0, len(cfg.Profiles))
-	for _, profile := range cfg.Profiles {
-		if profile != nil && profile.SSID != "" {
-			ssids = append(ssids, profile.SSID)
-		}
-	}
-
-	return ssids
 }
 
 func ensureProfile() error {

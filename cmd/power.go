@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/gradle"
 	"github.com/andreibanu/pusher/internal/power"
 	"github.com/spf13/cobra"
@@ -32,7 +31,7 @@ func init() {
 }
 
 func runPower(cmd *cobra.Command, args []string) error {
-	serial, err := adb.Target()
+	serial, err := requireRobot()
 	if err != nil {
 		return err
 	}
