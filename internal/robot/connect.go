@@ -51,6 +51,16 @@ func Connect(out io.Writer) error {
 		return nil
 	}
 
+	// Before anything touches the radio. A robot that is already reachable is
+	// one nobody has to leave their own network for, which is the whole point.
+	if config.GetRelay() {
+		if found, err := Locate(out, false); err == nil {
+			Remember(found)
+			fmt.Fprintf(out, "[OK] Robot at %s, on the network you were already on\n", found.Addr)
+			return nil
+		}
+	}
+
 	manager := wifi.NewManager()
 
 	onRobot, err := manager.IsOnRobotNetwork()

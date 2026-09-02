@@ -1,9 +1,11 @@
 package adb
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -58,9 +60,44 @@ func (d Device) Label() string {
 	return d.Serial
 }
 
+// robotAddr is where the robot answers adb.
+//
+// The hub's own access point puts it at a fixed address, and for most of
+// pusher's life that was the only place it could be. A robot that has joined a
+// network you were already on is somewhere else entirely, so this is where
+// pusher is talking to it this run rather than a constant.
+var robotAddr = fmt.Sprintf("%s:%s", RobotIP, RobotPort)
+
 // RobotAddr is the robot's adb address over Wi-Fi.
-func RobotAddr() string {
-	return fmt.Sprintf("%s:%s", RobotIP, RobotPort)
+func RobotAddr() string { return robotAddr }
+
+// UseAddress points pusher at a robot somewhere other than its own access
+// point, and reports whether the address was usable.
+//
+// Set once, from what discovery found or from what was remembered, rather than
+// threaded through every call: which robot pusher is talking to is one fact for
+// the whole run.
+func UseAddress(addr string) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return false
+	}
+	if !strings.Contains(addr, ":") {
+		addr += ":" + RobotPort
+	}
+
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		return false
+	}
+
+	robotAddr = addr
+	return true
+}
+
+// UseOwnAccessPoint puts the address back to the hub's own, which is where it
+// is unless something has said otherwise.
+func UseOwnAccessPoint() {
+	robotAddr = fmt.Sprintf("%s:%s", RobotIP, RobotPort)
 }
 
 // IsInstalled reports whether adb is on the path.
@@ -190,7 +227,51 @@ func Connect() error { return ConnectTo(os.Stdout) }
 // A menu cannot let this print to stdout: bubbletea owns the screen, and six
 // lines of retry chatter painted over a menu stay there for the rest of the
 // session.
-func ConnectTo(out io.Writer) error {
+// The retries are what make this work after a Wi-Fi join: the robot's adb is
+// not listening the instant the laptop has an address on its network.
+func ConnectTo(out io.Writer) error { return connectWithRetries(out) }
+
+// ProbeTimeout is how long one address gets to prove it has adb behind it.
+const ProbeTimeout = 2 * time.Second
+
+// ConnectAt attaches to a robot at a named address, with one attempt rather
+// than the retries ConnectTo makes. A sweep tries many addresses and cannot
+// spend fifteen seconds on each one that turns out to be a printer.
+func ConnectAt(out io.Writer, addr string) error {
+	if !IsInstalled() {
+		return fmt.Errorf("%w - please install Android SDK Platform-Tools", ErrNoADB)
+	}
+
+	// Bounded, because adb spends about ten seconds on a host that accepts a
+	// socket and then does not speak its protocol. That is any device with the
+	// port open and no adb behind it, and a sweep that meets two of them has
+	// somebody watching a blank terminal for half a minute.
+	ctx, cancel := context.WithTimeout(context.Background(), ProbeTimeout)
+	defer cancel()
+
+	output, err := exec.CommandContext(ctx, "adb", "connect", addr).CombinedOutput()
+	if ctx.Err() != nil {
+		_, _ = exec.Command("adb", "disconnect", addr).CombinedOutput()
+		return fmt.Errorf("%s did not answer adb in %s", addr, ProbeTimeout)
+	}
+	if err != nil {
+		return fmt.Errorf("adb connect %s failed: %w", addr, err)
+	}
+
+	text := strings.ToLower(strings.TrimSpace(string(output)))
+	if strings.Contains(text, "connected") {
+		return nil
+	}
+	return fmt.Errorf("adb would not connect to %s: %s", addr, strings.TrimSpace(string(output)))
+}
+
+// DisconnectFrom drops one address, leaving any others attached.
+func DisconnectFrom(addr string) error {
+	_, err := exec.Command("adb", "disconnect", addr).CombinedOutput()
+	return err
+}
+
+func connectWithRetries(out io.Writer) error {
 	if !IsInstalled() {
 		return fmt.Errorf("%w - please install Android SDK Platform-Tools", ErrNoADB)
 	}

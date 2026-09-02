@@ -106,6 +106,8 @@ Requires `adb` and an FTC project with a Gradle wrapper.
 | `pusher visualiser <OpMode>` | Draw the path an auto drove, coloured by speed |
 | `pusher power` | Show what drew the most current on the last run |
 | `pusher profile` | Flame chart of what ate the loop time on the last run |
+| `pusher ip` | Where the robot is, and every port it is serving |
+| `pusher relay setup` | Put the robot on your own Wi-Fi over a USB adapter |
 | `pusher prepare` | Cache Gradle dependencies while online |
 | `pusher help` | Help |
 
@@ -240,6 +242,98 @@ way this goes wrong is somebody turning it on during practice and forgetting:
     cannot be bulk read, so each reading is its own trip over the bus.
     Turn it off in `pusher settings` before an official match.
 ```
+
+## Reaching the robot without leaving your own network
+
+Switching Wi-Fi to deploy is the thing everybody puts up with: the laptop leaves
+whatever it was on, the robot's access point has no route anywhere, and getting
+back is another wait at the other end.
+
+The robot can join your network instead. Plug a USB Wi-Fi adapter into the
+Control Hub and:
+
+```
+pusher relay setup "YourWiFi" "your password"
+```
+
+The hub joins your network **and carries on serving its own access point to the
+Driver Station**, so the robot stays drivable throughout. Deploys, FtcDashboard,
+Panels and the Limelight all then work over the network you were already on.
+
+Inspired by Dhruv, FTC 32001L, whose ADB relay bridged adb from the robot's
+access point to the local network with a Raspberry Pi in between. The want is
+theirs; this reaches it from the other end, by putting the robot on your network
+rather than putting a machine on the robot's.
+
+### The adapter, and the driver for it
+
+The hub's own radio cannot join anything — it *is* the access point, and the SDK
+has no client mode for it: `RobotControllerAccessPointAssistant` reports
+`RCWIRELESSAP` and has no `connect` method at all. So this needs a second radio.
+
+A Linux driver is compiled against one exact kernel and the kernel refuses
+anything else, so a driver cannot be downloaded and cannot be built on the
+laptop that wants it. Pusher carries six, built from
+[the kernel source REV publishes](https://github.com/REVrobotics/kernel-controlhub-android),
+one per Control Hub OS release from 1.0.0 to 1.1.6. The driver is already in
+REV's own tree at `drivers/net/wireless/rockchip_wlan/rtl8822bu`; it is simply
+not enabled in the config they ship, so these are their source with one line
+turned on, plus the TP-Link device IDs Realtek never listed.
+
+It picks by OS release, and failing that by kernel release, which is what the
+hub itself checks — these kernels are built without `CONFIG_MODVERSIONS`, so
+vermagic is the whole test. A hub it has nothing for is told so by name, with a
+link to ask.
+
+**Which adapters work** is decided by that driver: RTL8822BU and RTL8812BU, the
+chipset in the TP-Link Archer T4U v3 among others. `pusher ip --adapters` says
+what your hub can see, what its kernel can drive, and what the kernel said about
+whatever is plugged in.
+
+### It stays put
+
+A boot hook rejoins on every power cycle and then watches. Unplug the adapter
+and plug it back in and the robot is on the network again within half a minute,
+with no laptop involved — which also covers the access point restarting and the
+lease expiring. `pusher relay forget` removes all of it and leaves the hub as it
+was.
+
+### Picking a network
+
+`pusher settings` -> **Reaching the robot over your own network** browses rather
+than types. **Look for networks near the robot** scans from the hub itself,
+which is the only vantage point that counts: what a laptop hears in the pit is
+not what the robot hears on the field. Signal, band, and open networks are all
+shown. Networks the robot has joined before are remembered, so a workshop and a
+venue are a choice rather than a retype.
+
+When the robot is already somewhere on your network, pusher finds it: where it
+was last, then the hub's own access point, then a sweep. A sweep only ever walks
+a subnet small enough to be somebody's own network, never a /8 or a /16, and
+something answering on the adb port is not enough to be treated as a robot —
+pusher asks the device what it is and leaves it alone if it turns out to be a
+phone.
+
+### Where everything is
+
+`pusher ip` asks the robot where it is and then knocks on every door:
+
+```
+Control Hub v1.0 (192.168.1.183:5555)
+─────────────────────────────────────────
+  addresses    192.168.1.183, 192.168.43.1
+  hostname     android-a252101d8e716898
+
+  ✓ adb                192.168.1.183:5555        what pusher deploys over
+  ✓ Robot Controller   http://192.168.1.183:8080 the hub's own manage page
+  ✓ FtcDashboard       http://192.168.1.183:8000 tuning and telemetry
+  ✓ Panels             http://192.168.1.183:8001 tuning and telemetry
+  ✓ Panels socket      192.168.1.183:8002        what `pusher dash diff` reads
+  ✓ Limelight          http://192.168.1.183:5801 through the Panels proxy
+```
+
+Only what actually answered is reported, so an address printed there is one you
+can paste into a browser rather than one pusher believes ought to work.
 
 ## What is eating the loop time
 

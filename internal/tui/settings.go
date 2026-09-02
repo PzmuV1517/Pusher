@@ -13,6 +13,7 @@ import (
 	"github.com/andreibanu/pusher/internal/pathtrace"
 	"github.com/andreibanu/pusher/internal/power"
 	"github.com/andreibanu/pusher/internal/profile"
+	"github.com/andreibanu/pusher/internal/robot"
 	"github.com/andreibanu/pusher/internal/telemetry"
 	"github.com/andreibanu/pusher/internal/wifi"
 	tea "github.com/charmbracelet/bubbletea"
@@ -44,6 +45,8 @@ const (
 	screenBlobToken
 	screenPower
 	screenProfile
+	screenRelay
+	screenRelayNetwork
 	screenUpdate
 	screenDeploy
 	screenExtreme
@@ -85,6 +88,7 @@ type SettingsModel struct {
 	blob     blobState
 	power    powerState
 	profile  profileState
+	relay    relayState
 	extreme  extremeState
 	root     string
 	gateStep int
@@ -182,6 +186,7 @@ var mainItems = []string{
 	"Loop profiler",
 	"Loop profiles",
 	"Profile rate",
+	"ADB relay",
 }
 
 // Update satisfies tea.Model.
@@ -215,6 +220,88 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.blob.auth = msg.status
 		m.blob.creds = msg.creds
 		m.cursor, m.offset = 0, 0
+		return m, nil
+
+	case relayScanMsg:
+		m.relay.busy = false
+		m.relay.scanning = false
+		m.relay.setup = ""
+		m.relay.connect.consider(msg.err)
+
+		if msg.err != nil && !m.relay.connect.open {
+			m.err = msg.err
+			return m, nil
+		}
+
+		m.relay.seen = msg.seen
+		if len(msg.seen) == 0 && msg.err == nil {
+			m.status = "The robot heard nothing"
+		} else if msg.err == nil {
+			m.status = fmt.Sprintf("The robot can hear %d networks", len(msg.seen))
+		}
+		return m, nil
+
+	case relayConnectedMsg:
+		m.relay.busy = false
+		m.relay.connect.busy = false
+		m.relay.setup = ""
+
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.relay.connect.open = false
+		m.status = "Connected"
+		return m, nil
+
+	case relayStepMsg:
+		// Only while it is running: a step arriving after the end belongs to
+		// nothing on screen.
+		if !m.relay.busy {
+			return m, nil
+		}
+
+		m.relay.log = append(m.relay.log, msg.line)
+
+		// Only the last few, or a long setup pushes the menu off the screen.
+		const most = 8
+		if len(m.relay.log) > most {
+			m.relay.log = m.relay.log[len(m.relay.log)-most:]
+		}
+
+		return m, waitForRelayStep
+
+	case relaySetupMsg:
+		m.relay.busy = false
+		m.relay.setup = ""
+
+		if msg.err != nil {
+			// A robot that is not there is worth offering to go and get,
+			// rather than reporting as a failed setup.
+			m.relay.connect.consider(msg.err)
+			if !m.relay.connect.open {
+				m.err = msg.err
+			}
+			return m, nil
+		}
+
+		m.relay.spots = config.GetRobotSpots()
+		m.status = "The robot is on " + msg.network + " at " + msg.address
+		return m, nil
+
+	case relayFoundMsg:
+		m.relay.busy = false
+		m.relay.spots = config.GetRobotSpots()
+
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+
+		robot.Remember(msg.found)
+		m.relay.spots = config.GetRobotSpots()
+		m.relay.found = msg.found.Addr
+		m.status = "Robot at " + msg.found.Addr
 		return m, nil
 
 	case profileListMsg:
@@ -347,6 +434,10 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updatePower(key)
 	case screenProfile:
 		return m.updateProfile(key)
+	case screenRelay:
+		return m.updateRelay(key)
+	case screenRelayNetwork:
+		return m.updateRelayNetwork(key)
 	case screenBlobToken:
 		return m.updateBlobToken(key)
 	case screenUpdate:
@@ -371,6 +462,7 @@ var mainSections = []menuSection{
 	{"Getting to the robot", []int{0, 1, 2, 3}},
 	{"Building and deploying", []int{6, 4, 5, 8}},
 	{"Reloading instead of installing", []int{9, 10}},
+	{"Reaching the robot over your own network", []int{21}},
 	{"Diagnostics", []int{15, 17, 16, 18, 20, 19}},
 	{"Extras", []int{optionalRow}},
 	{"Pusher itself", []int{11, 14, 13}},
@@ -481,6 +573,8 @@ func (m *SettingsModel) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.enterProfile()
 		case 20:
 			m.cycleProfilePeriod()
+		case 21:
+			m.enterRelay()
 		}
 	}
 
@@ -728,6 +822,10 @@ func (m *SettingsModel) listLength() int {
 		return len(m.blob.traces)
 	case screenProfile:
 		return len(m.profile.runs)
+	case screenRelay:
+		return m.relayLength()
+	case screenRelayNetwork:
+		return 0
 	case screenBlobToken:
 		return 0
 	case screenUpdate:
@@ -827,6 +925,10 @@ func (m *SettingsModel) View() string {
 		b.WriteString(m.viewPower())
 	case screenProfile:
 		b.WriteString(m.viewProfile())
+	case screenRelay:
+		b.WriteString(m.viewRelay())
+	case screenRelayNetwork:
+		b.WriteString(m.viewRelayNetwork())
 	case screenBlobToken:
 		b.WriteString(m.viewBlobToken())
 	case screenUpdate:
@@ -1115,6 +1217,18 @@ func (m *SettingsModel) cycleProfilePeriod() {
 	m.status = fmt.Sprintf("Sampling every %dms. Deploy for the robot to use it", next)
 }
 
+// relayLabel says whether pusher will look for the robot on this network, and
+// where it last found it, which is the question somebody actually has.
+func (m *SettingsModel) relayLabel() string {
+	if !config.GetRelay() {
+		return "off"
+	}
+	if addr := config.GetRobotAddress(); addr != "" {
+		return "on (" + addr + ")"
+	}
+	return "on (not found yet)"
+}
+
 func (m *SettingsModel) viewMain() string {
 	values := []string{
 		m.defaultProfileLabel(),
@@ -1138,6 +1252,7 @@ func (m *SettingsModel) viewMain() string {
 		m.profilerLabel(),
 		"",
 		m.profilePeriodLabel(),
+		m.relayLabel(),
 	}
 
 	list := m.layout()

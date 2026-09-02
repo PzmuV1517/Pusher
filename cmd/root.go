@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/feature"
 	"github.com/andreibanu/pusher/internal/selfupdate"
@@ -44,6 +45,15 @@ func Execute(version string) {
 	if err := config.Initialize(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// A robot that was found somewhere other than its own access point is still
+	// there next time, and every command needs to know before it asks adb
+	// anything. Cheap: one string out of the config, no sockets.
+	if config.GetRelay() {
+		if addr := config.GetRobotAddress(); addr != "" {
+			adb.UseAddress(addr)
+		}
 	}
 
 	visualiseCmd.Hidden = !feature.Revealed()
@@ -87,6 +97,8 @@ func init() {
 	rootCmd.AddCommand(dashCmd)
 	rootCmd.AddCommand(powerCmd)
 	rootCmd.AddCommand(profileCmd)
+	rootCmd.AddCommand(ipCmd)
+	rootCmd.AddCommand(relayCmd)
 	rootCmd.AddCommand(devCmd)
 	rootCmd.AddCommand(visualiseCmd)
 	rootCmd.AddCommand(helpCmd)

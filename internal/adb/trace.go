@@ -2,6 +2,7 @@ package adb
 
 import (
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
 )
@@ -19,6 +20,23 @@ type RemoteTrace struct {
 // Shell runs an adb shell command and returns its combined output.
 func Shell(serial string, args ...string) (string, error) {
 	return run(serial, append([]string{"shell"}, args...)...)
+}
+
+// ShellOutput is Shell, keeping what the command printed even when it failed.
+//
+// Shell throws the output away on a non-zero exit and puts it inside the error
+// text, which loses exactly the part worth reading: a tool that refuses says
+// why on stderr and then exits non-zero, so "the robot would not load the
+// driver" came back with no reason given when insmod had explained itself
+// perfectly well.
+func ShellOutput(serial string, args ...string) (string, error) {
+	full := append([]string{"shell"}, args...)
+	if serial != "" {
+		full = append([]string{"-s", serial}, full...)
+	}
+
+	out, err := exec.Command("adb", full...).CombinedOutput()
+	return string(out), err
 }
 
 // Pull copies a file off the device.

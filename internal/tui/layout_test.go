@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/power"
 	"github.com/andreibanu/pusher/internal/profile"
 	"strings"
@@ -38,6 +39,13 @@ func TestNoScreenOverflowsASmallTerminal(t *testing.T) {
 					m.power.runs = []power.Recording{
 						{Name: "TeleOP-1756089600000.txt", OpMode: "TeleOP"},
 						{Name: "AVeryLongAutonomousOpModeName-1756089600000.txt", OpMode: "AVeryLongAutonomousOpModeName"},
+					}
+				}},
+				{"adb relay", func(m *SettingsModel) {
+					m.screen = screenRelay
+					m.relay.spots = []config.Spot{
+						{Network: "ICHB-Robotics", Address: "10.0.0.42:5555"},
+						{Network: "a-very-long-network-name-indeed", Address: "192.168.1.183:5555"},
 					}
 				}},
 				{"loop profiles", func(m *SettingsModel) {

@@ -7,7 +7,48 @@ grouping invented afterwards.
 
 Anything not listed is in `git log`, which is the complete record.
 
-## Unreleased
+## 1.3.0
+
+- **The robot can join your Wi-Fi, so deploying stops meaning switching
+  networks.** Plug a USB Wi-Fi adapter into the Control Hub, run `pusher relay
+  setup "YourWiFi" "password"`, and the hub joins your network while still
+  serving its own access point to the Driver Station. Deploys, both dashboards
+  and the Limelight then work over the network you were already on.
+
+  Inspired by Dhruv, FTC 32001L, whose ADB relay bridged adb from the robot's
+  access point to the local network with a Linux box in between. The want is
+  theirs; this reaches it from the other end.
+
+  The hub's own radio cannot do this: it is the access point, and the SDK has no
+  client mode for it. So a second radio is needed, and a driver for it, and a
+  driver is compiled against one exact kernel and cannot be downloaded. Pusher
+  therefore carries six, built from the kernel source REV publishes — one per
+  Control Hub OS release from 1.0.0 to 1.1.6 — and picks by OS release, falling
+  back to any built for the same kernel, which is what the hub itself checks. A
+  hub it has nothing for is told so by name, with a link to ask for one.
+
+  It stays. A boot hook rejoins the network on every power cycle and watches
+  from then on: unplug the adapter and put it back and the robot is on the
+  network again within half a minute, without a laptop. `pusher relay forget`
+  takes all of it off.
+
+  **Networks are browsed rather than typed.** The robot scans from where it is
+  sitting, which is the only vantage point that matters, and reports what it can
+  hear with signal, band and whether it is open. Networks it has joined before
+  are remembered, so a workshop and a venue are a choice rather than a retype.
+
+  When the robot is somewhere on your network already, pusher finds it: the
+  address it was last at, then the hub's own access point, then a sweep. A sweep
+  only walks a subnet small enough to be somebody's own network, and something
+  answering on the adb port is not enough to be treated as a robot — pusher asks
+  the device what it is and leaves it alone if it turns out to be a phone.
+
+- **`pusher ip`** asks the robot where it is and knocks on every door: its
+  addresses, its hostname and `.local` name when this network resolves one, and
+  the hub's manage page, FtcDashboard, Panels, the Panels socket and the
+  Limelight through the Panels proxy. Only what actually answered is reported,
+  so an address printed there is one that can be pasted into a browser. Ports
+  read out of the published artifacts rather than from memory.
 
 - **A flame chart of where the loop time goes.** The power monitor says what the
   battery is going into; this says where the time is going, which is the other

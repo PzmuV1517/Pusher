@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/power"
 	"github.com/andreibanu/pusher/internal/profile"
 	tea "github.com/charmbracelet/bubbletea"
@@ -146,6 +147,12 @@ func settingsScreens() []struct {
 		{"blob branches", func(m *SettingsModel) {
 			m.screen = screenBlobBranch
 			m.blob.branches = []string{"main", "RSTController", "feedforward", "a-branch-with-a-very-long-name"}
+		}},
+		{"adb relay", func(m *SettingsModel) {
+			m.screen = screenRelay
+			for i := 0; i < 8; i++ {
+				m.relay.spots = append(m.relay.spots, config.Spot{Network: "net", Address: "10.0.0.42:5555"})
+			}
 		}},
 		{"loop profiles", func(m *SettingsModel) {
 			m.screen = screenProfile

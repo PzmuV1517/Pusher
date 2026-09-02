@@ -10,14 +10,54 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var connectFind bool
+
 var connectCmd = &cobra.Command{
 	Use:   "connect",
 	Short: "Join the robot's Wi-Fi and connect ADB",
-	Long:  `Joins the robot's Wi-Fi network and establishes an ADB connection, without building or deploying.`,
-	RunE:  runConnect,
+	Long: `Joins the robot's Wi-Fi network and establishes an ADB connection, without
+building or deploying.
+
+With ADB relay on, this looks for the robot on the network you are already on
+first, and only takes over your Wi-Fi if it is not there. --find sweeps the
+whole network for it, which is what to run the first time or after it moves.`,
+	RunE: runConnect,
+}
+
+func init() {
+	connectCmd.Flags().BoolVar(&connectFind, "find", false,
+		"Sweep this network for the robot rather than only looking where it was")
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
+	if connectFind {
+		found, err := robot.Locate(os.Stdout, true)
+		if err != nil {
+			return err
+		}
+
+		robot.Remember(found)
+		fmt.Printf("[OK] %s at %s\n", orRobot(found.Model), found.Addr)
+		fmt.Println("[*] Remembered, so the next run finds it straight away.")
+
+		if !config.GetRelay() {
+			fmt.Println("[!] ADB relay is off, so deploys will still join the robot's own Wi-Fi.")
+			fmt.Println("    Turn it on in `pusher settings` -> ADB relay.")
+		}
+		return nil
+	}
+
+	return connectAndSay()
+}
+
+func orRobot(model string) string {
+	if model == "" {
+		return "Robot"
+	}
+	return model
+}
+
+func connectAndSay() error {
 	if err := connectRobot(); err != nil {
 		return err
 	}
