@@ -520,6 +520,63 @@ Recording requires the `blob-dev` artifact and `BlobParams.recordTrace = true`.
 Competition builds of blob contain no recording code at all, so a robot you take
 to a match cannot log even if the flag is set.
 
+## Reading the follower log
+
+A path trace says where the robot went. The follower log says what the path
+follower asked for and what it actually got, one row per control loop, and it
+exists to settle one question: a robot that wobbles is either fighting its
+mechanics or running code that does not do what anybody believes it does, and
+those have completely different fixes.
+
+Logs live in `/sdcard/FIRST/blob-follower` on the hub, one file per OpMode run,
+named after the time it started. They are listed under `pusher settings` → blob
+library → **Follower logs**, newest first, with the number of loops and the size
+of each. Picking one pulls it and opens a page.
+
+```bash
+pusher visualiser --file follower-1737030000000.csv   # one you already have
+```
+
+The page is the run in the order the questions get asked:
+
+- **Reference against measurement, per axis.** Forward, left and turn, stacked on
+  one time axis. A gap that stays open means the loop cannot keep up, so either
+  the constants are wrong or the closed loop time constant is asking for more
+  than the pack supplies. A gap that oscillates means that constant is too small
+  for the rate the loop actually ran at. Nothing else separates those two.
+- **The turn command against what was delivered**, with the saturated loops
+  shaded. The delivered twist is recovered by running blob's mix backwards from
+  the four logged wheel commands; on unsaturated loops it reproduces the volts
+  exactly, and where it does not, the mix could not deliver what was asked. A
+  heading loop starved of volts and a badly tuned one look identical everywhere
+  else.
+- **Volts per axis against the pack**, with the kS feedforward shaded underneath,
+  so a command that is the model driving is visually separate from one that is
+  the controller correcting.
+- **The loop period**, as a distribution rather than an average, with the fastest
+  `tauClosedLoop` the rate can support. blob's autotune assumes 20 ms when it
+  derives that constant, so a robot actually running at 30 ms has had its pole
+  placed where its loop cannot follow it, and the ringing that produces looks
+  exactly like badly chosen constants.
+- **The four wheel commands** with full scale marked, where a persistent
+  asymmetry points at one motor rather than at the controller, and **heading
+  error** over time with the settled loops marked.
+
+Drag across any plot to zoom every plot to the same window, which is how the
+ringing gets looked at; double click to come back out.
+
+The heading error is drawn CCW positive, like everything else on the page. The
+column in the file is not: blob stores it mirrored, where a positive error asks
+for a clockwise turn. Comparing that column against `omega` without negating it
+makes a robot that is turning correctly look like one turning the wrong way.
+
+Recording needs the `blob-dev` artifact and `BlobParams.recordFollower = true`.
+A competition build's recorder is a stub with no file IO in it, so the directory
+will not exist at all, and pusher says which of those two it is rather than
+showing an empty list. The file is rewritten whole every couple of seconds while
+the run is going and carries no end marker, so a log pulled mid run is complete,
+valid and shorter than the run it came from; pull it again for the rest.
+
 ## Making deploys faster
 
 **Put the Control Hub on 5 GHz.** Hold the hub's button through power-on and

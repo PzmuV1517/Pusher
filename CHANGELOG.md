@@ -7,6 +7,40 @@ grouping invented afterwards.
 
 Anything not listed is in `git log`, which is the complete record.
 
+## Unreleased
+
+- **The follower log, read and drawn.** blob's dev build can record every stage
+  of every control loop to `/sdcard/FIRST/blob-follower`, and pusher now lists
+  those runs under `pusher settings` -> blob library -> Follower logs, pulls the
+  one you pick and renders it.
+
+  It is a different question from the path visualiser. That one draws where the
+  robot went; this one draws what the follower asked for against what it got, so
+  the answer it gives is whether a wobble is mechanical or in code. Reference
+  against measurement per axis, the turn command against what the mix actually
+  delivered with the starved loops shaded, volts against the pack with the
+  feedforward separated out from the feedback, the loop period as a distribution
+  with the fastest closed loop constant that rate can support, the four wheel
+  commands against full scale, and the heading error with the settled loops
+  marked. Dragging across any plot zooms all of them to the same window, which
+  is the only way to look at ringing in five minutes of sixty hertz.
+
+  What was delivered is not recorded. It is recovered by running blob's mix
+  backwards from the four logged wheel commands, which reproduces the volts
+  exactly on every loop that did not saturate, and the loops where it does not
+  are the ones worth looking at.
+
+  The log is read by column name and refuses a format version it does not know
+  rather than guessing at columns that may have moved. A file pulled while the
+  run is still going is complete, valid and shorter, because the recorder
+  rewrites it whole every couple of seconds; the page says so rather than
+  presenting a number of loops as final. A competition build cannot record at
+  all, and pusher tells that apart from a dev build that was never asked to,
+  because they send you to different places.
+
+  `pusher visualiser --file` recognises one from its first line, so a log pulled
+  by hand opens the right page instead of failing as invalid JSON.
+
 ## 1.3.0
 
 - **The robot can join your Wi-Fi, so deploying stops meaning switching

@@ -6,6 +6,7 @@ import (
 
 	"github.com/andreibanu/pusher/internal/adb"
 	"github.com/andreibanu/pusher/internal/feature"
+	"github.com/andreibanu/pusher/internal/follower"
 	"github.com/andreibanu/pusher/internal/pathtrace"
 	"github.com/andreibanu/pusher/internal/tui"
 	"github.com/andreibanu/pusher/internal/visual"
@@ -37,7 +38,11 @@ build from ` + "`pusher settings` -> blob library" + `.
 
   pusher visualiser              pick from the runs on the robot
   pusher visualiser CloseBlue    newest run for that OpMode
-  pusher visualiser --file t.json  a trace you already have`,
+  pusher visualiser --file t.json  a trace you already have
+
+` + "`--file`" + ` also takes a blob follower log, which is the per loop record of what
+the path follower asked for against what it got. Those live in ` + follower.Dir + `
+and are listed under ` + "`pusher settings` -> blob library -> Follower logs" + `.`,
 	RunE: runVisualise,
 }
 
@@ -67,6 +72,20 @@ func runVisualise(cmd *cobra.Command, args []string) error {
 	}
 
 	if visFile != "" {
+		// A follower log is a different recording of a different thing, and it
+		// says so on its first line. Recognising it here means a file somebody
+		// pulled by hand opens the right page instead of failing as invalid
+		// JSON, which is what a CSV handed to a trace reader looks like.
+		if follower.Looks(visFile) {
+			return render(func() (string, error) {
+				log, err := follower.Load(visFile)
+				if err != nil {
+					return "", err
+				}
+				return log.Render(visOut)
+			})
+		}
+
 		return render(func() (string, error) {
 			return visual.RenderLocal(visFile, visProject, visOut, limits)
 		})

@@ -8,6 +8,7 @@ import (
 
 	"github.com/andreibanu/pusher/internal/config"
 	"github.com/andreibanu/pusher/internal/feature"
+	"github.com/andreibanu/pusher/internal/follower"
 	"github.com/andreibanu/pusher/internal/ftcproject"
 	"github.com/andreibanu/pusher/internal/notify"
 	"github.com/andreibanu/pusher/internal/pathtrace"
@@ -41,6 +42,7 @@ const (
 	screenThreads
 	screenBlob
 	screenBlobRuns
+	screenBlobFollower
 	screenBlobBranch
 	screenBlobToken
 	screenPower
@@ -86,6 +88,7 @@ type SettingsModel struct {
 	confirmDeleteIndex int
 
 	blob     blobState
+	follower followerState
 	power    powerState
 	profile  profileState
 	relay    relayState
@@ -304,6 +307,42 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "Robot at " + msg.found.Addr
 		return m, nil
 
+	case followerListMsg:
+		m.follower.busy = false
+		m.follower.serial = msg.serial
+		m.follower.runs = msg.runs
+		m.follower.err = msg.err
+		m.follower.connect.consider(msg.err)
+		m.cursor, m.offset = 0, 0
+
+		// The offer stands in for the error, so keeping both says the same
+		// thing twice in two registers.
+		if m.follower.connect.open {
+			m.follower.err = nil
+		}
+		return m, nil
+
+	case followerConnectedMsg:
+		m.follower.busy = false
+		m.follower.connect.busy = false
+
+		if msg.err != nil {
+			m.follower.err = msg.err
+			return m, nil
+		}
+
+		m.follower.connect.open = false
+		return m, m.enterFollower()
+
+	case followerPageMsg:
+		m.follower.busy = false
+		m.err = msg.err
+		if msg.err == nil {
+			follower.Open(msg.path)
+			m.status = "Opened " + msg.path
+		}
+		return m, nil
+
 	case profileListMsg:
 		m.profile.busy = false
 		m.profile.serial = msg.serial
@@ -428,6 +467,8 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateBlob(key)
 	case screenBlobRuns:
 		return m.updateBlobRuns(key)
+	case screenBlobFollower:
+		return m.updateFollower(key)
 	case screenBlobBranch:
 		return m.updateBlobBranch(key)
 	case screenPower:
@@ -820,6 +861,8 @@ func (m *SettingsModel) listLength() int {
 		return len(m.blobMenuItems())
 	case screenBlobRuns:
 		return len(m.blob.traces)
+	case screenBlobFollower:
+		return len(m.follower.runs)
 	case screenProfile:
 		return len(m.profile.runs)
 	case screenRelay:
@@ -919,6 +962,8 @@ func (m *SettingsModel) View() string {
 		b.WriteString(m.viewBlob())
 	case screenBlobRuns:
 		b.WriteString(m.viewBlobRuns())
+	case screenBlobFollower:
+		b.WriteString(m.viewFollower())
 	case screenBlobBranch:
 		b.WriteString(m.viewBlobBranch())
 	case screenPower:
