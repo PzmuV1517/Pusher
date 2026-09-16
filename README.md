@@ -104,6 +104,7 @@ Requires `adb` and an FTC project with a Gradle wrapper.
 | `pusher hwconfig` | Pull, edit and push the robot's hardware configs |
 | `pusher doctor` | Diagnose Wi-Fi, adb and project problems |
 | `pusher visualiser <OpMode>` | Draw the path an auto drove, coloured by speed |
+| `pusher visualiser --file <log>` | Draw a blob follower log: asked against got, per loop |
 | `pusher power` | Show what drew the most current on the last run |
 | `pusher profile` | Flame chart of what ate the loop time on the last run |
 | `pusher ip` | Where the robot is, and every port it is serving |
