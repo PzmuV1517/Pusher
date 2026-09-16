@@ -40,10 +40,25 @@ type blobState struct {
 }
 
 var (
-	blobItems        = []string{"Build variant", "Release branch", "Version", "GitHub token", "Recorded runs", "Back"}
+	blobItems        = []string{"Build variant", "Release branch", "Version", "GitHub token", "Recorded runs", "Follower logs", "Back"}
 	blobMissingItems = []string{"Add blob to the project", "GitHub token", "Back"}
 	blobLockedItems  = []string{"GitHub token", "Back"}
 )
+
+// blobIndex is where an entry sits in this menu, looked up rather than written
+// down.
+//
+// Coming back from one of these screens has to put the cursor back on the entry
+// that opened it, and the numbers that used to do that were already one out
+// before anything was added to the list. A name cannot drift.
+func blobIndex(item string) int {
+	for i, name := range blobItems {
+		if name == item {
+			return i
+		}
+	}
+	return 0
+}
 
 type blobAuthMsg struct {
 	status ghauth.Status
@@ -194,6 +209,9 @@ func (m *SettingsModel) chooseBlob(item string) (tea.Model, tea.Cmd) {
 	case "Recorded runs":
 		m.loadTraces()
 		m.goTo(screenBlobRuns, 0)
+
+	case "Follower logs":
+		return m, m.enterFollower()
 	}
 
 	return m, nil
@@ -388,7 +406,7 @@ func (m *SettingsModel) updateBlobRuns(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.quit = true
 			return m, tea.Quit
 		}
-		m.goTo(screenBlob, 3)
+		m.goTo(screenBlob, blobIndex("Recorded runs"))
 		m.status = ""
 
 	case "r":
@@ -610,7 +628,7 @@ func (m *SettingsModel) enterBranches() tea.Cmd {
 func (m *SettingsModel) updateBlobBranch(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "esc", "q", "left", "h":
-		m.goTo(screenBlob, 1)
+		m.goTo(screenBlob, blobIndex("Release branch"))
 		m.status = ""
 
 	case "r":
