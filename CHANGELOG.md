@@ -7,7 +7,7 @@ grouping invented afterwards.
 
 Anything not listed is in `git log`, which is the complete record.
 
-## Unreleased
+## 1.3.3
 
 - **The follower log, read and drawn.** blob's dev build can record every stage
   of every control loop to `/sdcard/FIRST/blob-follower`, and pusher now lists
@@ -40,6 +40,13 @@ Anything not listed is in `git log`, which is the complete record.
 
   `pusher visualiser --file` recognises one from its first line, so a log pulled
   by hand opens the right page instead of failing as invalid JSON.
+
+- **The help lists the commands that are already there.** `pusher ip`, `pusher
+  relay` and its two subcommands, `pusher power`, `pusher profile` and `pusher
+  doctor` had all shipped without ever reaching `pusher help`. A new section
+  next to the Pusher Extreme one says which page answers which question: where
+  the battery went, where the loop time went, where the robot went, and what the
+  follower asked for against what it got.
 
 ## 1.3.0
 
